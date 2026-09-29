@@ -1,0 +1,90 @@
+{
+  "id": "moonshot",
+  "name": "Moonshot",
+  "description": "月之暗面 Kimi 系列大模型，支持视觉理解、深度推理与编程",
+  "variants": [
+    {
+      "id": "kimi-k3",
+      "name": "Kimi K3",
+      "type": "text",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiDocUrl": "https://platform.kimi.com/docs",
+      "description": "Kimi 迄今能力最强的模型，2.8 万亿参数，原生支持视觉理解，100 万 token 上下文，面向软件工程、知识工作和深度推理场景",
+      "enabled": true,
+      "reasoning": true,
+      "price": 0.55,
+      "credit_price": 6,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "parameters": {
+        "temperature": 1
+      },
+      "maxOutputTokens": 64000
+    },
+    {
+      "id": "kimi-k2.6",
+      "name": "Kimi K2.6",
+      "type": "text",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiDocUrl": "https://platform.kimi.com/docs",
+      "description": "支持视觉与文本输入、思考与非思考模式、对话与 Agent 任务，上下文 256k",
+      "enabled": true,
+      "price": 0.33,
+      "credit_price": 4,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "parameters": {
+        "temperature": 1
+      },
+      "maxOutputTokens": 32768
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "name": "Kimi K2.7 Code",
+      "type": "text",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiDocUrl": "https://platform.kimi.com/docs",
+      "description": "Kimi 的 Coding 模型，在长上下文中更可靠地遵循指令，能以更高的成功率完成编程任务，上下文 256k",
+      "enabled": true,
+      "price": 0.22,
+      "credit_price": 3,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "parameters": {
+        "temperature": 1
+      },
+      "maxOutputTokens": 32768
+    },
+    {
+      "id": "kimi-k2.7-code-highspeed",
+      "name": "Kimi K2.7 Code 高速版",
+      "type": "text",
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "apiDocUrl": "https://platform.kimi.com/docs",
+      "description": "Kimi K2.7 Code 的高速版，输出速度约 180 Tokens/s，短上下文场景可达 260 Token/s",
+      "enabled": true,
+      "price": 0.33,
+      "credit_price": 4,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "parameters": {
+        "temperature": 1
+      },
+      "maxOutputTokens": 32768
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "MOONSHOT_API_KEY",
+    "reasoningTokenBuffer": 24000,
+    "proxyDefault": false
+  },
+  "balance": {
+    "url": "https://api.moonshot.cn/v1/users/me/balance",
+    "currency": "CNY",
+    "extract": {
+      "available": "data.available_balance",
+      "voucher": "data.voucher_balance",
+      "cash": "data.cash_balance"
+    }
+  }
+}

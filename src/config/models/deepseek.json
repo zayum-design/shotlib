@@ -1,0 +1,51 @@
+{
+  "id": "deepseek",
+  "name": "DeepSeek",
+  "description": "深度求索 AI 模型",
+  "variants": [
+    {
+      "id": "deepseek-v4-flash",
+      "name": "DeepSeek V4 Flash",
+      "type": "text",
+      "baseUrl": "https://api.deepseek.com",
+      "apiDocUrl": "https://api-docs.deepseek.com/zh-cn/",
+      "description": "DeepSeek V4 Flash 快速响应对话模型",
+      "enabled": true,
+      "reasoning": true,
+      "maxOutputTokens": 384000,
+      "price": 0.11,
+      "credit_price": 1,
+      "rpm": 100,
+      "priceType": "per_1k_tokens"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "name": "DeepSeek V4 Pro",
+      "type": "text",
+      "baseUrl": "https://api.deepseek.com",
+      "apiDocUrl": "https://api-docs.deepseek.com/zh-cn/",
+      "description": "DeepSeek V4 Pro 高质量推理模型",
+      "enabled": true,
+      "reasoning": true,
+      "maxOutputTokens": 384000,
+      "price": 0.55,
+      "credit_price": 6,
+      "rpm": 100,
+      "priceType": "per_1k_tokens"
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "reasoningTokenBuffer": 24000,
+    "proxyDefault": false
+  },
+  "balance": {
+    "url": "https://api.deepseek.com/user/balance",
+    "extract": {
+      "available": "balance_infos[0].total_balance",
+      "granted": "balance_infos[0].granted_balance",
+      "toppedUp": "balance_infos[0].topped_up_balance",
+      "currency": "balance_infos[0].currency"
+    }
+  }
+}

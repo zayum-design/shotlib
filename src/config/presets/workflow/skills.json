@@ -1,0 +1,50 @@
+[
+  {
+    "id": "character",
+    "name": "人物描写",
+    "icon": "👤",
+    "description": "深入刻画人物性格、外貌和内心世界"
+  },
+  {
+    "id": "scene",
+    "name": "场景渲染",
+    "icon": "🎬",
+    "description": "营造氛围、描写环境和布景"
+  },
+  {
+    "id": "dialogue",
+    "name": "对白创作",
+    "icon": "💬",
+    "description": "创作自然流畅、性格鲜明的对话"
+  },
+  {
+    "id": "plot",
+    "name": "剧情编排",
+    "icon": "📖",
+    "description": "设计合理有趣的情节发展"
+  },
+  {
+    "id": "emotion",
+    "name": "情感刻画",
+    "icon": "❤️",
+    "description": "细腻描写人物情感变化"
+  },
+  {
+    "id": "suspense",
+    "name": "悬念制造",
+    "icon": "🎭",
+    "description": "制造紧张感和悬念"
+  },
+  {
+    "id": "rhythm",
+    "name": "节奏把控",
+    "icon": "🎵",
+    "description": "控制故事节奏和叙事张力"
+  },
+  {
+    "id": "worldbuilding",
+    "name": "世界观构建",
+    "icon": "🌍",
+    "description": "创建完整可信的世界观设定"
+  }
+]

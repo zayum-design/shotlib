@@ -1,0 +1,933 @@
+{
+  "id": "volcengine",
+  "name": "即梦",
+  "description": "火山引擎视频生成模型",
+  "variants": [
+    {
+      "id": "doubao-seed-evolving",
+      "name": "Doubao Seed Evolving",
+      "type": "text",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302012",
+      "description": "豆包旗舰级文本模型",
+      "enabled": true,
+      "price": 0.04,
+      "credit_price": 1,
+      "rpm": 500,
+      "priceType": "per_1k_tokens",
+      "maxOutputTokens": 65536,
+      "reasoning": true
+    },
+    {
+      "id": "doubao-seed-2-1-pro-260628",
+      "name": "Doubao Seed 2.1 pro",
+      "type": "text",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302012",
+      "description": "豆包旗舰级 Agent 通用模型",
+      "enabled": true,
+      "price": 0.04,
+      "credit_price": 1,
+      "rpm": 500,
+      "priceType": "per_1k_tokens",
+      "maxOutputTokens": 32768
+    },
+    {
+      "id": "doubao-seedream-5-0-pro-260628",
+      "name": "Seedream 5.0 pro",
+      "versionTag": "5.0-pro",
+      "type": "image",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302008",
+      "description": "火山引擎5.0-pro图片生成模型",
+      "enabled": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "sequential_image_generation": false,
+        "reference_image_max_count": 14,
+        "size": {
+          "type": "mixed",
+          "presets": [
+            "2K",
+            "4K"
+          ],
+          "default": "2048x2048",
+          "min_pixels": 3686400,
+          "max_pixels": 4624220,
+          "aspect_ratio_min": 0.0625,
+          "aspect_ratio_max": 16,
+          "aspect_presets": {
+            "1:1": [
+              "2048x2048",
+              "4096x4096"
+            ],
+            "16:9": [
+              "2848x1600",
+              "5504x3040"
+            ],
+            "21:9": [
+              "3136x1344",
+              "6240x2656"
+            ],
+            "4:3": [
+              "2304x1728",
+              "4096x3072"
+            ],
+            "3:2": [
+              "2496x1664",
+              "4704x3168"
+            ]
+          }
+        },
+        "seed": false,
+        "guidance_scale": false,
+        "stream": true,
+        "output_format": true,
+        "output_format_values": [
+          "jpeg",
+          "png"
+        ],
+        "response_format": true,
+        "watermark": true,
+        "optimize_prompt_options": true,
+        "tools": true,
+        "web_search": true
+      },
+      "price": 0.35,
+      "credit_price": 4,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image",
+      "online_pricing": {
+        "price_type": "per_image",
+        "image_to_image": 0.3,
+        "text_to_image": 0.3
+      }
+    },
+    {
+      "id": "doubao-seedream-5-0-260128",
+      "name": "Seedream 5.0",
+      "versionTag": "5.0",
+      "type": "image",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302008",
+      "description": "火山引擎5.0图片生成模型",
+      "enabled": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "sequential_image_generation": true,
+        "reference_image_max_count": 14,
+        "size": {
+          "type": "mixed",
+          "presets": [
+            "2K",
+            "3K"
+          ],
+          "default": "2048x2048",
+          "min_pixels": 3686400,
+          "max_pixels": 10404496,
+          "aspect_ratio_min": 0.0625,
+          "aspect_ratio_max": 16,
+          "aspect_presets": {
+            "1:1": [
+              "2048x2048",
+              "3072x3072"
+            ],
+            "16:9": [
+              "2848x1600",
+              "4096x2304"
+            ],
+            "21:9": [
+              "3136x1344",
+              "4704x2016"
+            ],
+            "4:3": [
+              "2304x1728",
+              "3072x2304"
+            ],
+            "3:2": [
+              "2496x1664",
+              "3328x2208"
+            ]
+          }
+        },
+        "seed": false,
+        "guidance_scale": false,
+        "stream": true,
+        "output_format": true,
+        "output_format_values": [
+          "jpeg",
+          "png"
+        ],
+        "response_format": true,
+        "watermark": true,
+        "optimize_prompt_options": true,
+        "tools": true,
+        "web_search": true
+      },
+      "price": 0.25,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "doubao-seedream-5-0-lite-260128",
+      "name": "Seedream 5.0 lite",
+      "versionTag": "5.0-lite",
+      "type": "image",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302008",
+      "description": "火山引擎5.0-lite图片生成模型",
+      "enabled": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "sequential_image_generation": true,
+        "reference_image_max_count": 14,
+        "size": {
+          "type": "mixed",
+          "presets": [
+            "2K",
+            "3K"
+          ],
+          "default": "2048x2048",
+          "min_pixels": 3686400,
+          "max_pixels": 10404496,
+          "aspect_ratio_min": 0.0625,
+          "aspect_ratio_max": 16,
+          "aspect_presets": {
+            "1:1": [
+              "2048x2048",
+              "3072x3072"
+            ],
+            "16:9": [
+              "2848x1600",
+              "4096x2304"
+            ],
+            "21:9": [
+              "3136x1344",
+              "4704x2016"
+            ],
+            "4:3": [
+              "2304x1728",
+              "3072x2304"
+            ],
+            "3:2": [
+              "2496x1664",
+              "3328x2208"
+            ]
+          }
+        },
+        "seed": false,
+        "guidance_scale": false,
+        "stream": true,
+        "output_format": true,
+        "output_format_values": [
+          "jpeg",
+          "png"
+        ],
+        "response_format": true,
+        "watermark": true,
+        "optimize_prompt_options": true,
+        "tools": true,
+        "web_search": true
+      },
+      "price": 0.25,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 500,
+      "priceType": "per_image",
+      "online_pricing": {
+        "price_type": "per_image",
+        "image_to_image": 0.22,
+        "text_to_image": 0.22
+      }
+    },
+    {
+      "id": "doubao-seedream-4-5-251128",
+      "name": "Seedream 4.5",
+      "versionTag": "4.5",
+      "type": "image",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302008",
+      "description": "火山引擎4.5图片生成模型",
+      "enabled": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "sequential_image_generation": true,
+        "reference_image_max_count": 14,
+        "size": {
+          "type": "mixed",
+          "presets": [
+            "2K",
+            "4K"
+          ],
+          "default": "2048x2048",
+          "min_pixels": 3686400,
+          "max_pixels": 16777216,
+          "aspect_ratio_min": 0.0625,
+          "aspect_ratio_max": 16,
+          "aspect_presets": {
+            "1:1": [
+              "2048x2048",
+              "4096x4096"
+            ],
+            "16:9": [
+              "2848x1600",
+              "5504x3040"
+            ],
+            "21:9": [
+              "3136x1344",
+              "6240x2656"
+            ],
+            "4:3": [
+              "2304x1728",
+              "4704x3520"
+            ],
+            "3:2": [
+              "2496x1664",
+              "4992x3328"
+            ]
+          }
+        },
+        "seed": false,
+        "guidance_scale": false,
+        "stream": true,
+        "output_format": false,
+        "response_format": true,
+        "watermark": true,
+        "optimize_prompt_options": true,
+        "tools": false,
+        "web_search": false
+      },
+      "price": 0.25,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 500,
+      "priceType": "per_image"
+    },
+    {
+      "id": "doubao-seedream-4-0-250828",
+      "name": "Seedream 4.0",
+      "versionTag": "4.0",
+      "type": "image",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302008",
+      "description": "火山引擎4.0图片生成模型",
+      "enabled": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "sequential_image_generation": true,
+        "reference_image_max_count": 14,
+        "size": {
+          "type": "mixed",
+          "presets": [
+            "1K",
+            "2K",
+            "4K"
+          ],
+          "default": "2048x2048",
+          "min_pixels": 921600,
+          "max_pixels": 16777216,
+          "aspect_ratio_min": 0.0625,
+          "aspect_ratio_max": 16,
+          "aspect_presets": {
+            "1:1": [
+              "1024x1024",
+              "2048x2048",
+              "4096x4096"
+            ],
+            "16:9": [
+              "1312x736",
+              "2848x1600",
+              "5504x3040"
+            ],
+            "21:9": [
+              "1568x672",
+              "3136x1344",
+              "6240x2656"
+            ],
+            "4:3": [
+              "1152x864",
+              "2304x1728",
+              "4704x3520"
+            ],
+            "3:2": [
+              "1248x832",
+              "2496x1664",
+              "4992x3328"
+            ]
+          }
+        },
+        "seed": false,
+        "guidance_scale": false,
+        "stream": true,
+        "output_format": false,
+        "response_format": true,
+        "watermark": true,
+        "optimize_prompt_options": true,
+        "tools": false,
+        "web_search": false
+      },
+      "price": 0.25,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 500,
+      "priceType": "per_image"
+    },
+    {
+      "id": "doubao-seedance-2-5-260628",
+      "name": "Seedance 2.5",
+      "type": "video",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302010",
+      "description": "即梦视频生成模型-2.5 长叙事强参考准编辑多语言，多模态参考生视频、视频编辑、视频延长、图生视频、文生视频",
+      "enabled": true,
+      "async": true,
+      "taskQueryUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "taskQueryPath": "/contents/generations/tasks/{taskId}",
+      "supports": {
+        "text_to_video": true,
+        "first_frame": true,
+        "last_frame": true,
+        "reference_image": true,
+        "reference_image_max_count": 30,
+        "reference_image_formats": [
+          "jpeg",
+          "png",
+          "webp",
+          "bmp",
+          "tiff",
+          "gif",
+          "heic",
+          "heif"
+        ],
+        "reference_image_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_image_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_image_max_size_mb": 30,
+        "reference_video": true,
+        "reference_video_max_count": 10,
+        "reference_video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "reference_video_duration": {
+          "min": 2,
+          "max": 30,
+          "total_max": 30
+        },
+        "reference_video_resolution": [
+          "480p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "reference_video_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_video_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_video_total_pixels": {
+          "min": 409600,
+          "max": 8295044
+        },
+        "reference_video_max_size_mb": 200,
+        "reference_video_fps": {
+          "min": 24,
+          "max": 60
+        },
+        "reference_audio": true,
+        "reference_audio_max_count": 10,
+        "reference_audio_formats": [
+          "wav",
+          "mp3"
+        ],
+        "reference_audio_duration": {
+          "min": 2,
+          "max": 30,
+          "total_max": 30
+        },
+        "reference_audio_max_size_mb": 15,
+        "audio_only": true,
+        "video_edit": true,
+        "video_extend": true,
+        "draft": false,
+        "resolution": true,
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "ratio": true,
+        "duration": true,
+        "frames": false,
+        "seed": false,
+        "camera_fixed": false,
+        "watermark": true,
+        "generate_audio": true,
+        "service_tier": false,
+        "execution_expires_after": true,
+        "return_last_frame": true,
+        "callback_url": true,
+        "priority": true,
+        "output_format": true,
+        "requires_compliance": true,
+        "requires_compliance_key": "seedance",
+        "tools": true,
+        "web_search": true
+      },
+      "duration": {
+        "min": 4,
+        "max": 30,
+        "default": 5,
+        "allowAuto": true
+      },
+      "price": 1.75,
+      "credit_price": 20,
+      "rpm": 600,
+      "concurrent_limit": 10,
+      "priceType": "per_second",
+      "record_tokens": true,
+      "online_pricing": {
+        "price_type": "per_1k_tokens",
+        "service_tier": "default",
+        "with_video_input": 0.042,
+        "without_video_input": 0.07
+      }
+    },
+    {
+      "id": "doubao-seedance-2-0-260128",
+      "name": "Seedance 2.0",
+      "type": "video",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302010",
+      "description": "即梦视频生成模型-2.0 全能参考参考生视频、图生视频、文生视频",
+      "enabled": true,
+      "async": true,
+      "taskQueryUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "taskQueryPath": "/contents/generations/tasks/{taskId}",
+      "supports": {
+        "text_to_video": true,
+        "first_frame": true,
+        "last_frame": true,
+        "reference_image": true,
+        "reference_image_max_count": 9,
+        "reference_image_formats": [
+          "jpeg",
+          "png",
+          "webp",
+          "bmp",
+          "tiff",
+          "gif",
+          "heic",
+          "heif"
+        ],
+        "reference_image_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_image_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_image_max_size_mb": 30,
+        "reference_video": true,
+        "reference_video_max_count": 3,
+        "reference_video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "reference_video_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_video_resolution": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "reference_video_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_video_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_video_total_pixels": {
+          "min": 409600,
+          "max": 2086876
+        },
+        "reference_video_max_size_mb": 50,
+        "reference_video_fps": {
+          "min": 24,
+          "max": 60
+        },
+        "reference_audio": true,
+        "reference_audio_max_count": 3,
+        "reference_audio_formats": [
+          "wav",
+          "mp3"
+        ],
+        "reference_audio_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_audio_max_size_mb": 15,
+        "draft": false,
+        "resolution": true,
+        "ratio": true,
+        "duration": true,
+        "frames": true,
+        "seed": true,
+        "camera_fixed": true,
+        "watermark": true,
+        "generate_audio": true,
+        "service_tier": true,
+        "execution_expires_after": true,
+        "return_last_frame": true,
+        "callback_url": true,
+        "human_face_mode": true,
+        "requires_compliance": true,
+        "requires_compliance_key": "seedance",
+        "tools": true,
+        "web_search": true
+      },
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": true
+      },
+      "price": 1.14,
+      "credit_price": 13,
+      "credit_price_1080p": 32,
+      "rpm": 1500,
+      "concurrent_limit": 25,
+      "priceType": "per_second",
+      "record_tokens": true,
+      "online_pricing": {
+        "price_type": "per_1k_tokens",
+        "service_tier": "default",
+        "with_video_input_min": 0.016,
+        "with_video_input_max": 0.031,
+        "without_video_input_min": 0.026,
+        "without_video_input_max": 0.051
+      }
+    },
+    {
+      "id": "doubao-seedance-2-0-fast-260128",
+      "name": "Seedance 2.0 fast",
+      "type": "video",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302010",
+      "description": "即梦视频生成模型-2.0 fast 全能参考参考生视频、图生视频、文生视频",
+      "enabled": true,
+      "async": true,
+      "taskQueryUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "taskQueryPath": "/contents/generations/tasks/{taskId}",
+      "supports": {
+        "text_to_video": true,
+        "first_frame": true,
+        "last_frame": true,
+        "reference_image": true,
+        "reference_image_max_count": 9,
+        "reference_image_formats": [
+          "jpeg",
+          "png",
+          "webp",
+          "bmp",
+          "tiff",
+          "gif",
+          "heic",
+          "heif"
+        ],
+        "reference_image_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_image_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_image_max_size_mb": 30,
+        "reference_video": true,
+        "reference_video_max_count": 3,
+        "reference_video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "reference_video_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_video_resolution": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "reference_video_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_video_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_video_total_pixels": {
+          "min": 409600,
+          "max": 2086876
+        },
+        "reference_video_max_size_mb": 50,
+        "reference_video_fps": {
+          "min": 24,
+          "max": 60
+        },
+        "reference_audio": true,
+        "reference_audio_max_count": 3,
+        "reference_audio_formats": [
+          "wav",
+          "mp3"
+        ],
+        "reference_audio_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_audio_max_size_mb": 15,
+        "draft": false,
+        "resolution": true,
+        "ratio": true,
+        "duration": true,
+        "frames": true,
+        "seed": true,
+        "camera_fixed": true,
+        "watermark": true,
+        "generate_audio": true,
+        "service_tier": true,
+        "execution_expires_after": true,
+        "return_last_frame": true,
+        "callback_url": true,
+        "human_face_mode": true,
+        "requires_compliance": true,
+        "requires_compliance_key": "seedance",
+        "tools": true,
+        "web_search": true
+      },
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": true
+      },
+      "price": 0.92,
+      "credit_price": 9,
+      "credit_price_1080p": 28,
+      "rpm": 1500,
+      "concurrent_limit": 2,
+      "priceType": "per_second",
+      "record_tokens": true,
+      "online_pricing": {
+        "price_type": "per_1k_tokens",
+        "service_tier": "default",
+        "with_video_input": 0.022,
+        "without_video_input": 0.037
+      }
+    },
+    {
+      "id": "doubao-seedance-2-0-mini-260615",
+      "name": "Seedance 2.0 mini",
+      "type": "video",
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/82379/1302010",
+      "description": "即梦视频生成模型-2.0 mini 高性价比，参考生视频、图生视频、文生视频",
+      "enabled": true,
+      "async": true,
+      "taskQueryUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "taskQueryPath": "/contents/generations/tasks/{taskId}",
+      "supports": {
+        "text_to_video": true,
+        "first_frame": true,
+        "last_frame": true,
+        "reference_image": true,
+        "reference_image_max_count": 9,
+        "reference_image_formats": [
+          "jpeg",
+          "png",
+          "webp",
+          "bmp",
+          "tiff",
+          "gif",
+          "heic",
+          "heif"
+        ],
+        "reference_image_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_image_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_image_max_size_mb": 30,
+        "reference_video": true,
+        "reference_video_max_count": 3,
+        "reference_video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "reference_video_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_video_resolution": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "reference_video_aspect_ratio": {
+          "min": 0.4,
+          "max": 2.5
+        },
+        "reference_video_dimensions": {
+          "min": 300,
+          "max": 6000
+        },
+        "reference_video_total_pixels": {
+          "min": 409600,
+          "max": 2086876
+        },
+        "reference_video_max_size_mb": 50,
+        "reference_video_fps": {
+          "min": 24,
+          "max": 60
+        },
+        "reference_audio": true,
+        "reference_audio_max_count": 3,
+        "reference_audio_formats": [
+          "wav",
+          "mp3"
+        ],
+        "reference_audio_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_audio_max_size_mb": 15,
+        "draft": false,
+        "resolution": true,
+        "ratio": true,
+        "duration": true,
+        "frames": true,
+        "seed": true,
+        "camera_fixed": true,
+        "watermark": true,
+        "generate_audio": true,
+        "service_tier": true,
+        "execution_expires_after": true,
+        "return_last_frame": true,
+        "callback_url": true,
+        "human_face_mode": true,
+        "requires_compliance": true,
+        "requires_compliance_key": "seedance",
+        "tools": true,
+        "web_search": true
+      },
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": true
+      },
+      "price": 0.58,
+      "credit_price": 6,
+      "credit_price_1080p": 20,
+      "rpm": 1500,
+      "concurrent_limit": 3,
+      "priceType": "per_second",
+      "record_tokens": true,
+      "online_pricing": {
+        "price_type": "per_1k_tokens",
+        "service_tier": "default",
+        "with_video_input": 0.014,
+        "without_video_input": 0.023
+      }
+    },
+    {
+      "id": "seed-icl-2-0",
+      "name": "Seed ICL 2.0",
+      "type": "voice",
+      "baseUrl": "https://openspeech.bytedance.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/6561/145051",
+      "description": "火山引擎音色设计模型，基于文本描述生成角色音色",
+      "enabled": false,
+      "supports": {
+        "voice_design": true,
+        "text_to_voice": true,
+        "voice_formats": [
+          "mp3",
+          "wav"
+        ],
+        "voice_duration": {
+          "min": 2,
+          "max": 15
+        },
+        "voice_max_size_mb": 15,
+        "max_input_length": 500
+      },
+      "price": 0.5,
+      "credit_price": 5,
+      "rpm": 60,
+      "priceType": "per_request"
+    },
+    {
+      "id": "seed-icl-1-0",
+      "name": "Seed ICL 1.0",
+      "type": "voice",
+      "baseUrl": "https://openspeech.bytedance.com/api/v3",
+      "apiDocUrl": "https://www.volcengine.com/docs/6561/145051",
+      "description": "火山引擎音色设计模型-1.0版本，基于文本描述生成角色音色",
+      "enabled": false,
+      "supports": {
+        "voice_design": true,
+        "text_to_voice": true,
+        "voice_formats": [
+          "mp3",
+          "wav"
+        ],
+        "voice_duration": {
+          "min": 2,
+          "max": 15
+        },
+        "voice_max_size_mb": 15,
+        "max_input_length": 500
+      },
+      "price": 0.3,
+      "credit_price": 3,
+      "rpm": 60,
+      "priceType": "per_request"
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "VOLCENGINE_API_KEY",
+    "reasoningTokenBuffer": 24000,
+    "proxyDefault": true
+  }
+}

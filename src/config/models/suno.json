@@ -1,0 +1,70 @@
+{
+  "id": "suno",
+  "name": "Suno AI",
+  "description": "Suno 音乐生成模型",
+  "variants": [
+    {
+      "id": "V6",
+      "name": "V6",
+      "type": "music",
+      "baseUrl": "https://api.sunoapi.org/api/v1",
+      "apiDocUrl": "https://www.suno.ai",
+      "description": "V6 最新一代模型，支持自定义时长。",
+      "enabled": true,
+      "maxDuration": 480,
+      "supportsLyrics": true,
+      "supportsDuration": true,
+      "price": 3.3,
+      "credit_price": 33,
+      "concurrent_limit": 3,
+      "rpm": 100,
+      "priceType": "per_track",
+      "recommended": true
+    },
+    {
+      "id": "V6_WILD",
+      "name": "V6 Wild",
+      "type": "music",
+      "baseUrl": "https://api.sunoapi.org/api/v1",
+      "apiDocUrl": "https://www.suno.ai",
+      "description": "V6 Wild 更自由奔放的创作风格，支持自定义时长。",
+      "enabled": true,
+      "maxDuration": 480,
+      "supportsLyrics": true,
+      "supportsDuration": true,
+      "price": 3.3,
+      "credit_price": 33,
+      "concurrent_limit": 3,
+      "rpm": 100,
+      "priceType": "per_track"
+    },
+    {
+      "id": "V6_MINI",
+      "name": "V6 Mini",
+      "type": "music",
+      "baseUrl": "https://api.sunoapi.org/api/v1",
+      "apiDocUrl": "https://www.suno.ai",
+      "description": "V6 Mini 轻量快速版，支持自定义时长。",
+      "enabled": true,
+      "maxDuration": 480,
+      "supportsLyrics": true,
+      "supportsDuration": true,
+      "price": 2.2,
+      "credit_price": 22,
+      "concurrent_limit": 3,
+      "rpm": 100,
+      "priceType": "per_track"
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "SUNO_API_KEY",
+    "proxyDefault": false
+  },
+  "balance": {
+    "url": "https://api.sunoapi.org/api/v1/generate/credit",
+    "currency": "积分",
+    "extract": {
+      "available": "data"
+    }
+  }
+}

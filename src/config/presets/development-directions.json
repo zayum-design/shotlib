@@ -1,0 +1,101 @@
+{
+  "version": "1.1.0",
+  "categories": [
+    {
+      "id": "plot",
+      "name": "剧情推进",
+      "directions": [
+        { "id": "plot_01", "name": "承接上一集悬念，揭晓关键线索", "isEnding": false },
+        { "id": "plot_02", "name": "主角发现新证据，推动主线发展", "isEnding": false },
+        { "id": "plot_03", "name": "反派暗中出手，制造新的危机", "isEnding": false },
+        { "id": "plot_04", "name": "意外转折出现，打乱原有计划", "isEnding": false },
+        { "id": "plot_05", "name": "主角陷入困境，需要寻找突破口", "isEnding": false },
+        { "id": "plot_06", "name": "多方势力交锋，局势更加复杂", "isEnding": false },
+        { "id": "plot_07", "name": "关键任务达成，但留下新的隐患", "isEnding": false },
+        { "id": "plot_08", "name": "主角主动出击，向目标更进一步", "isEnding": false },
+        { "id": "plot_09", "name": "真相即将浮出水面，众人各怀心思", "isEnding": false },
+        { "id": "plot_10", "name": "大剧终：主线收束，尘埃落定", "isEnding": true }
+      ]
+    },
+    {
+      "id": "emotion",
+      "name": "情感发展",
+      "directions": [
+        { "id": "emotion_01", "name": "男女主角关系升温，暧昧升级", "isEnding": false },
+        { "id": "emotion_02", "name": "误会加深，双方陷入冷战", "isEnding": false },
+        { "id": "emotion_03", "name": "前任或第三者出现，感情受考验", "isEnding": false },
+        { "id": "emotion_04", "name": "患难见真情，彼此开始信任", "isEnding": false },
+        { "id": "emotion_05", "name": "有人为爱牺牲，情感爆发", "isEnding": false },
+        { "id": "emotion_06", "name": "告白或承诺，关系明确化", "isEnding": false },
+        { "id": "emotion_07", "name": "家庭或朋友反对，爱情受阻", "isEnding": false },
+        { "id": "emotion_08", "name": "共同经历后，感情更加坚定", "isEnding": false },
+        { "id": "emotion_09", "name": "和解与原谅，重归于好", "isEnding": false },
+        { "id": "emotion_10", "name": "大剧终：有情人终成眷属", "isEnding": true }
+      ]
+    },
+    {
+      "id": "conflict",
+      "name": "冲突升级",
+      "directions": [
+        { "id": "conflict_01", "name": "反派势力反扑，压力骤增", "isEnding": false },
+        { "id": "conflict_02", "name": "盟友背叛，主角腹背受敌", "isEnding": false },
+        { "id": "conflict_03", "name": "资源被夺，主角一无所有", "isEnding": false },
+        { "id": "conflict_04", "name": "正面交锋，双方摊牌", "isEnding": false },
+        { "id": "conflict_05", "name": "舆论或身份危机爆发", "isEnding": false },
+        { "id": "conflict_06", "name": "以弱胜强，暂时扳回一局", "isEnding": false },
+        { "id": "conflict_07", "name": "更大的幕后黑手浮出水面", "isEnding": false },
+        { "id": "conflict_08", "name": "决战前夕，各方集结", "isEnding": false },
+        { "id": "conflict_09", "name": "胜负已分，但代价惨重", "isEnding": false },
+        { "id": "conflict_10", "name": "大剧终：正义战胜邪恶", "isEnding": true }
+      ]
+    },
+    {
+      "id": "reveal",
+      "name": "悬念揭秘",
+      "directions": [
+        { "id": "reveal_01", "name": "上一集伏笔回收，谜团逐步解开", "isEnding": false },
+        { "id": "reveal_02", "name": "关键证人说出真相", "isEnding": false },
+        { "id": "reveal_03", "name": "主角发现被隐瞒的过去", "isEnding": false },
+        { "id": "reveal_04", "name": "反派动机揭晓，令人唏嘘", "isEnding": false },
+        { "id": "reveal_05", "name": "身份反转，众人震惊", "isEnding": false },
+        { "id": "reveal_06", "name": "旧案与新案串联，真相逼近", "isEnding": false },
+        { "id": "reveal_07", "name": "关键道具或信件出现", "isEnding": false },
+        { "id": "reveal_08", "name": "主角识破陷阱，将计就计", "isEnding": false },
+        { "id": "reveal_09", "name": "所有线索指向最终答案", "isEnding": false },
+        { "id": "reveal_10", "name": "大剧终：真相大白，水落石出", "isEnding": true }
+      ]
+    },
+    {
+      "id": "character",
+      "name": "角色关系",
+      "directions": [
+        { "id": "character_01", "name": "新角色登场，带来变数", "isEnding": false },
+        { "id": "character_02", "name": "旧友重逢，关系微妙", "isEnding": false },
+        { "id": "character_03", "name": "师徒或伙伴关系受到考验", "isEnding": false },
+        { "id": "character_04", "name": "家族秘密影响角色选择", "isEnding": false },
+        { "id": "character_05", "name": "宿敌暂时联手，各取所需", "isEnding": false },
+        { "id": "character_06", "name": "配角成长，推动主线", "isEnding": false },
+        { "id": "character_07", "name": "信任崩塌，团队分崩离析", "isEnding": false },
+        { "id": "character_08", "name": "化解误会，重新结盟", "isEnding": false },
+        { "id": "character_09", "name": "角色完成蜕变，独当一面", "isEnding": false },
+        { "id": "character_10", "name": "大剧终：各归其位，各自圆满", "isEnding": true }
+      ]
+    },
+    {
+      "id": "climax",
+      "name": "高潮收尾",
+      "directions": [
+        { "id": "climax_01", "name": "终极对决一触即发", "isEnding": false },
+        { "id": "climax_02", "name": "主角背水一战，放手一搏", "isEnding": false },
+        { "id": "climax_03", "name": "反派露出致命破绽", "isEnding": false },
+        { "id": "climax_04", "name": "牺牲与救赎，情感高潮", "isEnding": false },
+        { "id": "climax_05", "name": "最后反转，意料之外", "isEnding": false },
+        { "id": "climax_06", "name": "众人合力，共度难关", "isEnding": false },
+        { "id": "climax_07", "name": "恩怨了结，主角释怀", "isEnding": false },
+        { "id": "climax_08", "name": "开启新篇章，留下余韵", "isEnding": false },
+        { "id": "climax_09", "name": "彩蛋：新的危机正在酝酿", "isEnding": false },
+        { "id": "climax_10", "name": "大剧终：圆满落幕，画上句号", "isEnding": true }
+      ]
+    }
+  ]
+}

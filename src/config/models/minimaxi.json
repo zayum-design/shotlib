@@ -1,0 +1,120 @@
+{
+  "id": "minimaxi",
+  "name": "MiniMax",
+  "description": "MiniMax 文本生成模型，支持多语言编程、Agent 工作流等复杂任务场景",
+  "variants": [
+    {
+      "id": "MiniMax-M2.7",
+      "name": "MiniMax M2.7",
+      "type": "text",
+      "baseUrl": "https://api.minimaxi.com/v1",
+      "apiDocUrl": "https://platform.minimaxi.com/docs/llms.txt",
+      "description": "MiniMax M2.7 通用文本模型，支持多语言编程、工具调用和复杂任务，上下文窗口 204800，输出速度约 60 TPS",
+      "enabled": true,
+      "reasoning": true,
+      "price": 0.15,
+      "credit_price": 2,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "maxOutputTokens": 32768
+    },
+    {
+      "id": "MiniMax-M2.7-highspeed",
+      "name": "MiniMax M2.7 极速版",
+      "type": "text",
+      "baseUrl": "https://api.minimaxi.com/v1",
+      "apiDocUrl": "https://platform.minimaxi.com/docs/llms.txt",
+      "description": "MiniMax M2.7 极速版，效果不变，输出速度约 100 TPS，上下文窗口 204800",
+      "enabled": false,
+      "reasoning": true,
+      "price": 0.15,
+      "credit_price": 2,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "maxOutputTokens": 32768
+    },
+    {
+      "id": "MiniMax-H3",
+      "name": "MiniMax H3",
+      "type": "video",
+      "baseUrl": "https://api.minimaxi.com",
+      "apiDocUrl": "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
+      "description": "MiniMax H3 多模态视频生成模型，支持文生视频、首/尾帧图生视频、全能参考生成（图/视频/音频），输出 768P/2K，时长 4~15 秒",
+      "enabled": true,
+      "async": true,
+      "supports": {
+        "text_to_video": true,
+        "first_frame": true,
+        "last_frame": true,
+        "reference_image": true,
+        "reference_image_max_count": 9,
+        "reference_image_formats": [
+          "jpg",
+          "jpeg",
+          "png",
+          "webp",
+          "heic",
+          "heif"
+        ],
+        "reference_image_dimensions": {
+          "min": 256,
+          "max": 5760
+        },
+        "reference_image_max_size_mb": 30,
+        "reference_video": true,
+        "reference_video_max_count": 3,
+        "reference_video_formats": [
+          "mp4",
+          "mov"
+        ],
+        "reference_video_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_video_dimensions": {
+          "min": 256,
+          "max": 5760
+        },
+        "reference_video_max_size_mb": 50,
+        "reference_audio": true,
+        "reference_audio_max_count": 3,
+        "reference_audio_formats": [
+          "wav",
+          "mp3"
+        ],
+        "reference_audio_duration": {
+          "min": 2,
+          "max": 15,
+          "total_max": 15
+        },
+        "reference_audio_max_size_mb": 15,
+        "reference_max_total_count": 12,
+        "resolution": true,
+        "resolutions": [
+          "768P",
+          "2K"
+        ],
+        "ratio": true,
+        "duration": true,
+        "prompt_max_chars": 7000
+      },
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": false
+      },
+      "price": 0.5,
+      "credit_price": 6,
+      "credit_price_1080p": 9,
+      "rpm": 100,
+      "priceType": "per_second"
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "MINIMAX_API_KEY",
+    "reasoningTokenBuffer": 24000,
+    "proxyDefault": true
+  }
+}
