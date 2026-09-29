@@ -1,0 +1,343 @@
+{
+  "id": "nano-banana",
+  "name": "Nano Banana",
+  "description": "Nano Banana 图片生成模型",
+  "variants": [
+    {
+      "id": "nano-banana",
+      "name": "Nano Banana",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana 图片生成模型",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "reference_image_max_count": 5,
+        "size": {
+          "type": "free",
+          "default": "1024x1024"
+        },
+        "seed": true,
+        "guidance_scale": true,
+        "stream": true,
+        "output_format": true,
+        "output_format_values": [
+          "jpeg",
+          "png",
+          "webp"
+        ],
+        "watermark": false,
+        "multi_image_per_request": true
+      },
+      "price": 0.11,
+      "credit_price": 1,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "gpt-image-2",
+      "name": "GPT Image 2",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "The next generation of native multimodal AI. Experience lightning-fast generation with flawless text rendering and hyper-realistic detail.",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.22,
+      "credit_price": 2,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan-2",
+      "name": "NanoBanan 2",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banan 2",
+      "enabled": false,
+      "recommended": true,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.22,
+      "credit_price": 2,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "gpt-image-2-2k",
+      "name": "GPT Image 2 2K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "GPT Image 2 2K",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 0.33,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan-2-2k",
+      "name": "NanoBanan 2 2K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banan 2 2K",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 0.55,
+      "credit_price": 6,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan-2-4k",
+      "name": "NanoBanan 2 4K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banan 2 4K",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 0.88,
+      "credit_price": 9,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "gpt-image-2-4k",
+      "name": "GPT Image 2 4K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "GPT Image 2 4K",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 1.32,
+      "credit_price": 13,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nano-banan-2-lite",
+      "name": "Nano Banan 2 Lite",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banan 2 Lite（轻量版，上游模型名 nano-banan-2-lite）",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.11,
+      "credit_price": 1,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "grok-imagine-image",
+      "name": "Grok imagine image",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Grok imagine image（上游模型名 grok-imagine-image）",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.11,
+      "credit_price": 1,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "grok-imagine-image-quality",
+      "name": "Grok imagine image Pro",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Grok imagine image Pro（高质量版，上游模型名 grok-imagine-image-quality）",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.22,
+      "credit_price": 2,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro",
+      "name": "Nano Banana Pro",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro（增强版图像生成模型）",
+      "upstreamModel": "nanobanan2&pro",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true,
+        "multi_image_per_request": true
+      },
+      "price": 0.33,
+      "credit_price": 3,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro-2k",
+      "name": "Nano Banana Pro 2K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro 2K（2K 高分辨率）",
+      "upstreamModel": "nanobanan2&pro-2k",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 0.44,
+      "credit_price": 4,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro-4k",
+      "name": "Nano Banana Pro 4K",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro 4K（4K 超高分辨率）",
+      "upstreamModel": "nanobanan2&pro-4k",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 0.66,
+      "credit_price": 6,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro-fast",
+      "name": "Nano Banana Pro Fast",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro Fast（快速版）",
+      "upstreamModel": "nanobanan2&pro-fast",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 1.1,
+      "credit_price": 10,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro-fast-2k",
+      "name": "Nano Banana Pro 2K Fast",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro 2K Fast（2K 快速版）",
+      "upstreamModel": "nanobanan2&pro-fast-2k",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 1.1,
+      "credit_price": 10,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    },
+    {
+      "id": "nanobanan2-pro-fast-4k",
+      "name": "Nano Banana Pro 4K Fast",
+      "type": "image",
+      "baseUrl": "https://www.nananobanana.com/api/v1/generate",
+      "apiDocUrl": "https://www.nananobanana.com/docs",
+      "description": "Nano Banana Pro 4K Fast（4K 快速版）",
+      "upstreamModel": "nanobanan2&pro-fast-4k",
+      "enabled": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": true,
+        "aspect_ratio": true
+      },
+      "price": 2.2,
+      "credit_price": 20,
+      "rpm": 100,
+      "ipm": 100,
+      "priceType": "per_image"
+    }
+  ],
+  "config": {
+    "apiKeyEnv": "NANO_BANANA_API_KEY",
+    "proxyDefault": false
+  }
+}
