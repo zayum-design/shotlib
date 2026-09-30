@@ -18,18 +18,8 @@ import { RefreshCw, Image as ImageIcon, Plus, Trash2, Check } from 'lucide-react
 import type { Character } from '@/shared/types';
 import { useResolvedImageUrls } from '@/modules/workflow/hooks/useWorkflowImageResolver';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 import { assetDropTarget, type DraggedProjectAsset } from '@/shared/utils/assetDragDrop';
 import { message } from '@/shared/utils/message';
-
-/** 从缓存读取图片合规状态 */
-const getIsCompliant = (assetId?: string): boolean => {
-  if (!assetId) return false;
-  const imgData = localApi.getCachedImageData(assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 
 interface CharacterPortraitGridProps {
   character: Character;
@@ -184,15 +174,7 @@ export const CharacterPortraitGrid: React.FC<CharacterPortraitGridProps> = ({
                 style={{ aspectRatio: '16/9' }}
                 onClick={() => resolvedUrl ? onPreviewPortrait(actualIndex) : undefined}
                 {...assetDropTarget(['character_image'], '形象照', (asset) => handleDropToSlot(actualIndex, asset))}
-              >
-                {resolvedUrl && getIsCompliant(img.assetId) && (
-                  <Tooltip title="已通过合规检查">
-                    <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                      <Check size={8} strokeWidth={4} />
-                    </div>
-                  </Tooltip>
-                )}
-                {resolvedUrl ? (
+              >                {resolvedUrl ? (
                   <img
                     src={resolvedUrl}
                     alt={img.name || `形象照 ${displayIndex + 1}`}

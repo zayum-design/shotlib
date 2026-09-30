@@ -30,7 +30,6 @@ import { CharacterFullBodySection } from './CharacterFullBodySection';
 import { CharacterPortraitDialog } from './CharacterPortraitDialog';
 import { message } from '../../utils/message';
 import { useResolvedImageUrls } from '@/modules/workflow/hooks/useWorkflowImageResolver';
-import { buildSeedanceCompliance, type SeedanceCompliance } from '@/modules/workflow/providers/volcengine/compliance';
 import { assetDropTarget, type DraggedProjectAsset } from '@/shared/utils/assetDragDrop';
 
 interface CharacterCardProps {
@@ -374,25 +373,6 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({ character }) => {
       'handleUserMaterialSelect',
     );
 
-    // real_person 头像已通过真人验证（user_assets.data 带 seedance assetId/groupId）；
-    // 迁移合规信息到新 image_asset.data.seedance，使 getAvatarCompliance 识别为已合规，
-    // 视频生成也能复用该火山 assetId 作为参考图。
-    const projectId = currentProjectId;
-    const seedanceAssetId = asset.data?.assetId as string | undefined;
-    if (assetId && projectId && projectId !== 'default' && seedanceAssetId) {
-      try {
-        const patch = buildSeedanceCompliance({
-          assetId: seedanceAssetId,
-          isCompliant: true,
-          groupId: asset.data?.groupId,
-          url: asset.sourceUrl,
-        });
-        await localApi.patchImageAssetData(projectId, assetId, patch);
-      } catch (e) {
-        console.error('[handleUserMaterialSelect] 迁移合规信息失败:', e);
-      }
-    }
-
     const avatarImage = { assetId, imageUrl: asset.sourceUrl, name: asset.name || '头像', isPortrait: true };
 
     const hasExistingAssets = character.multiViewImages?.some(img => img.imageUrl) || character.fullBodyImages?.some(img => img.imageUrl);
@@ -433,8 +413,6 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({ character }) => {
     // 素材库关联数据
     userAssetId: asset.id,
     assetType: asset.assetType,
-    // 已入库即视为合规
-    isCompliant: true,
   });
 
   const handleCharacterAssetSelect = async (asset: UserMaterialItem) => {
@@ -444,24 +422,6 @@ export const CharacterCard: React.FC<CharacterCardProps> = ({ character }) => {
       { source: 'user_asset', userAssetId: asset.id, name: asset.name },
       'handleCharacterAssetSelect',
     );
-
-    // character 素材库头像的合规信息存在 user_assets.data.seedance（含火山 assetId/groupId/isCompliant/url）；
-    // 迁移到新 image_asset.data.seedance，使 getAvatarCompliance 识别为已合规，视频生成也能复用火山 assetId。
-    const projectId = currentProjectId;
-    const seedance = asset.data?.seedance as SeedanceCompliance | undefined;
-    if (assetId && projectId && projectId !== 'default' && seedance?.assetId) {
-      try {
-        const patch = buildSeedanceCompliance({
-          assetId: seedance.assetId,
-          isCompliant: seedance.isCompliant ?? true,
-          groupId: seedance.groupId,
-          url: seedance.url,
-        });
-        await localApi.patchImageAssetData(projectId, assetId, patch);
-      } catch (e) {
-        console.error('[handleCharacterAssetSelect] 迁移合规信息失败:', e);
-      }
-    }
 
     const avatarImage = { ...buildAvatarFromCharacterAsset(asset), assetId };
     const hasExistingAssets = character.multiViewImages?.some(img => img.imageUrl) || character.fullBodyImages?.some(img => img.imageUrl);

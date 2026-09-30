@@ -16,8 +16,6 @@
  * workflowStore.episode.utils.ts — 片段相关纯工具函数
  */
 import type { Character, Scene, Episode, ModelConfig } from '@/shared/types/index';
-import { getComplianceHelpers, readAnyCompliance } from '../providers/compliance-factory';
-import { localApi } from '@/storage';
 
 // ========== 视频提示词统一约束后缀 ==========
 // 提交视频生成时统一追加到提示词末尾，不再要求 LLM 写在 prompt 里、
@@ -518,7 +516,6 @@ export function buildUniversalReferenceRequest(
   scenes: Scene[],
   videoModels: ModelConfig[],
   getVideoPromptFormatter: (provider: string) => ((...args: any[]) => string) | undefined,
-  passThroughAssetIdMap?: Map<string, string>,
   /** 未按分集过滤的原始角色列表：显式 @<portrait> 标签解析形象照图片时兜底
    * （characters 经 filterCharacterPortraitsByEpisode 过滤后，非当前分集的形象照 imageUrl 被清空，
    * 但用户在提示词中显式引用的形象照是 deliberate 的，应始终解析提交） */
@@ -552,10 +549,7 @@ export function buildUniversalReferenceRequest(
   const referenceAudios: string[] = [];
   const referenceAudioMap: Record<string, string> = {};
   const referenceVideos: string[] = [];
-  // 判断当前模型是否需要资产合规检查（由厂商 helper 读取自有 model.json 标志判定）
   const currentModelConfig = videoModels.find((m) => m.id === episode.model);
-  const complianceHelpers = getComplianceHelpers(currentModelConfig?.provider);
-  const needsCompliance = complianceHelpers?.isComplianceRequired(currentModelConfig) ?? false;
 
   // 视频/音频参考附件的模型能力判断（与下方 referenceModel 回退逻辑保持一致的目标模型选择）：
   // 不支持时 !<ref> 标签降级为纯名称文本，避免提示词出现「参照视频1[视频1]」但请求中无对应媒体
@@ -578,11 +572,8 @@ export function buildUniversalReferenceRequest(
       const trimmed = name.trim();
       if (!url) return trimmed;
       if (type === 'image') {
-        // 合规模型：附件图替换为厂商 asset://（无映射时 resolveReferenceUrl 原样返回）
-        const refUrl = needsCompliance && complianceHelpers
-          ? complianceHelpers.resolveReferenceUrl(url, undefined, passThroughAssetIdMap)
-          : url;
-        return `${trimmed}[图片${addImageUrl(refUrl)}]`;
+        // 参考图直接使用图片自身 URL 提交
+        return `${trimmed}[图片${addImageUrl(url)}]`;
       }
       if (type === 'video') {
         if (!supportsRefVideo) {
@@ -605,23 +596,7 @@ export function buildUniversalReferenceRequest(
     });
 
 
-  const resolveCharImageUrl = (char: any, url: string): string => {
-    if (!needsCompliance || !url || !complianceHelpers) return url;
-    const allImages = [
-      ...(char.avatarImages || []),
-      ...(char.multiViewImages || []),
-      ...(char.fullBodyImages || []),
-    ];
-    const found = allImages.find((img: any) => img.imageUrl === url);
-    // 从 image_asset.data 缓存读取厂商合规 assetId
-    const imgData = found?.assetId ? localApi.getCachedImageData(found.assetId) : undefined;
-    const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-    return complianceHelpers.resolveReferenceUrl(url, compliance?.assetId, passThroughAssetIdMap);
-  };
-
-  // 场景图未经过合规检查（无火山合规 assetId，scene.imageAssetIds 为 image_asset UUID，不可用作 asset://），
-  // 始终使用原始 URL 提交，不替换为 asset://
-  const resolveSceneImageUrl = (_scene: Scene, url: string): string => url;
+  // 角色图/场景图始终使用图片自身 URL 提交
 
   // 从形象照名称提取年龄变体标记（如「张远-70岁病中照」→ 70）
   const extractAgeVariant = (name?: string): number | undefined => {
@@ -644,7 +619,7 @@ export function buildUniversalReferenceRequest(
       const variantAvatar = allAvatars.find((a) => a.ageVariant === ageVariant && a.imageUrl);
       if (variantAvatar?.imageUrl) faceImage = variantAvatar.imageUrl;
     }
-    const faceImageUrl = resolveCharImageUrl(char, faceImage);
+    const faceImageUrl = faceImage;
     if (faceImageUrl) { const imgNum = addImageUrl(faceImageUrl); charIdToFaceImageNum.set(charId, imgNum); }
 
     // 装束参照（形象照优先，多视图兜底）——与 prompt 是否标注 @<portrait> 无关，
@@ -655,7 +630,7 @@ export function buildUniversalReferenceRequest(
     const portraits = (char.fullBodyImages || []).filter((img) => !!img.imageUrl);
     const hasExplicitPortrait = charIdToPortraitCostumeUrl.has(charId);
     if (portraits.length > 0 && !hasExplicitPortrait) {
-      const defaultPortraitUrl = resolveCharImageUrl(char, portraits[0].imageUrl!);
+      const defaultPortraitUrl = portraits[0].imageUrl!;
       const imgNum = addImageUrl(defaultPortraitUrl);
       charIdToPortraitCostumeUrl.set(charId, defaultPortraitUrl);
       charIdToPortraitImageNum.set(charId, imgNum);
@@ -666,7 +641,7 @@ export function buildUniversalReferenceRequest(
       const multiView = char.multiViewImages?.[0];
       const rightImg = multiView?.viewType === 'right' || multiView?.viewType === 'back' ? multiView : undefined;
       if (rightImg?.imageUrl) {
-        const costumeImageUrl = resolveCharImageUrl(char, rightImg.imageUrl);
+        const costumeImageUrl = rightImg.imageUrl;
         const imgNum = addImageUrl(costumeImageUrl); charIdToCostumeImageNum.set(charId, imgNum);
       }
     }
@@ -692,7 +667,7 @@ export function buildUniversalReferenceRequest(
   // 诊断：首帧参考图收集字段状态（排查尾帧图未传入请求体的问题）
   console.log('[buildUniversalReferenceRequest] 首帧参考图诊断:', {
     episodeId: episode.id, title: episode.title, model: episode.model,
-    videoGenerationMode: episode.videoGenerationMode, needsCompliance,
+    videoGenerationMode: episode.videoGenerationMode,
     shots: (episode.shots || []).map((s, i) => ({
       idx: i,
       useReferenceAsFirstFrame: s.useReferenceAsFirstFrame,
@@ -710,13 +685,7 @@ export function buildUniversalReferenceRequest(
         if (!scene?.isDerived) continue;
         const tailFrameUrl = scene.imageUrls?.[0];
         if (!tailFrameUrl) continue;
-        let refUrl = tailFrameUrl;
-        if (needsCompliance && complianceHelpers) {
-          const aid = scene.imageAssetIds?.[0];
-          const imgData = aid ? localApi.getCachedImageData(aid) : undefined;
-          const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-          refUrl = complianceHelpers.resolveReferenceUrl(tailFrameUrl, compliance?.assetId, passThroughAssetIdMap);
-        }
+        const refUrl = tailFrameUrl;
         const imgNum = addImageUrl(refUrl);
         derivedTailFrameAdded = true;
         console.log(`[buildUniversalReferenceRequest] 衍生场景首帧参考图 shot[${idx}] -> 图${imgNum}: ${refUrl}`);
@@ -724,13 +693,7 @@ export function buildUniversalReferenceRequest(
       }
       // 2. 普通分镜的 shot.referenceImageUrl（useReferenceAsFirstFrame）
       if (!derivedTailFrameAdded && shot.useReferenceAsFirstFrame && shot.referenceImageUrl) {
-        let refUrl = shot.referenceImageUrl;
-        if (needsCompliance && complianceHelpers) {
-          const aid = shot.referenceImageAssetId;
-          const imgData = aid ? localApi.getCachedImageData(aid) : undefined;
-          const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-          refUrl = complianceHelpers.resolveReferenceUrl(shot.referenceImageUrl, compliance?.assetId, passThroughAssetIdMap);
-        }
+        const refUrl = shot.referenceImageUrl;
         const imgNum = addImageUrl(refUrl);
         shotFirstFrameMap.set(idx, imgNum);
         console.log(`[buildUniversalReferenceRequest] 普通分镜首帧参考图 shot[${idx}] -> 图${imgNum}: ${refUrl}`);
@@ -757,7 +720,7 @@ export function buildUniversalReferenceRequest(
           if (portraitUrl) resolvedChar = rawChar;
         }
         if (portraitUrl) {
-          const finalPortraitUrl = resolveCharImageUrl(resolvedChar, portraitUrl);
+          const finalPortraitUrl = portraitUrl;
           charIdToPortraitCostumeUrl.set(charId, finalPortraitUrl);
           const imgNum = addImageUrl(finalPortraitUrl);
           charIdToPortraitImageNum.set(charId, imgNum);
@@ -789,20 +752,20 @@ export function buildUniversalReferenceRequest(
         const sId = match[1]; if (sceneIdToImageNum.has(sId)) continue;
         const scene = scenes.find((s) => s.id === sId);
         // 衍生场景图不作为参考图（衍生片段参考图来自 shot.referenceImageUrl），避免同名衍生场景重复提交
-        if (scene && !scene.isDerived && scene.imageUrls?.[0]) { const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(sId, imgNum); }
+        if (scene && !scene.isDerived && scene.imageUrls?.[0]) { const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(sId, imgNum); }
       }
       for (const match of shot.prompt.matchAll(/#<scene>([^<]*?)<img[^>]*><\/scene>/g)) {
         const name = match[1].trim(); if (!name) continue;
         const scene = scenes.find((s) => s.name === name && !s.isDerived);
         if (scene && !sceneIdToImageNum.has(scene.id) && scene.imageUrls?.[0]) {
-          const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
+          const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
         }
       }
       for (const match of shot.prompt.matchAll(/[@#]<scene>([^<]*?)<\/scene>/g)) {
         const name = match[1].trim(); if (!name) continue;
         const scene = scenes.find((s) => s.name === name && !s.isDerived);
         if (scene && !sceneIdToImageNum.has(scene.id) && scene.imageUrls?.[0]) {
-          const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
+          const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
         }
       }
       const sortedScenes = [...scenes].filter((s) => !s.isDerived).sort((a, b) => b.name.length - a.name.length);
@@ -810,7 +773,7 @@ export function buildUniversalReferenceRequest(
         if (sceneIdToImageNum.has(scene.id)) continue;
         const escapedName = scene.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         if (new RegExp(`[@#]${escapedName}(?![^<]*>)`, 'g').test(shot.prompt) && scene.imageUrls?.[0]) {
-          const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
+          const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
         }
       }
     });
@@ -825,14 +788,14 @@ export function buildUniversalReferenceRequest(
       const sId = match[1]; if (sceneIdToImageNum.has(sId)) continue;
       const scene = scenes.find((s) => s.id === sId);
       // 衍生场景图不作为参考图（同上分镜场景收集）
-      if (scene && !scene.isDerived && scene.imageUrls?.[0]) { const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(sId, imgNum); }
+      if (scene && !scene.isDerived && scene.imageUrls?.[0]) { const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(sId, imgNum); }
     }
     const sortedScenesForVideoPrompt = [...scenes].filter((s) => !s.isDerived).sort((a, b) => b.name.length - a.name.length);
     for (const scene of sortedScenesForVideoPrompt) {
       if (sceneIdToImageNum.has(scene.id) || !scene.name || !scene.imageUrls?.[0]) continue;
       const escapedName = scene.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (new RegExp(`[@#]${escapedName}(?![^<]*>)`, 'g').test(videoPromptHtml)) {
-        const finalUrl = resolveSceneImageUrl(scene, scene.imageUrls[0]); const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
+        const finalUrl = scene.imageUrls[0]; const imgNum = addImageUrl(finalUrl); sceneIdToImageNum.set(scene.id, imgNum);
       }
     }
   }

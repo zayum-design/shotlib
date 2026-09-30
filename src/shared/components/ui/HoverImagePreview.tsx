@@ -14,10 +14,6 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { Tooltip } from 'antd';
-import { Check } from 'lucide-react';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 
 export interface HoverPreviewState {
   src: string;
@@ -25,7 +21,7 @@ export interface HoverPreviewState {
   type: 'role' | 'scene' | 'portrait';
   x: number;
   y: number;
-  /** 图片资产 ID，用于从 localApi 缓存读取合规状态 */
+  /** 图片资产 ID（保留字段，历史数据兼容） */
   assetId?: string;
   // 关键修复：无图时的文字说明（如"角色xxx尚未生成头像"），
   // 让用户清楚知道"@<role> 已解析为该角色，只是该角色还没图"
@@ -92,12 +88,6 @@ export const HoverImagePreview: React.FC<HoverImagePreviewProps> = ({
 }) => {
   if (!preview) return null;
 
-  // 从缓存读取合规状态
-  const isCompliant = preview.assetId ? (() => {
-    const d = localApi.getCachedImageData(preview.assetId);
-    return d ? !!readAnyCompliance(d)?.isCompliant : false;
-  })() : false;
-
   const isTop = placement === 'top';
 
   return createPortal(
@@ -121,13 +111,6 @@ export const HoverImagePreview: React.FC<HoverImagePreviewProps> = ({
         ) : (
           <>
             <div className="relative inline-block">
-              {isCompliant && (
-                <Tooltip title="已通过合规检查">
-                  <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                    <Check size={8} strokeWidth={4} />
-                  </div>
-                </Tooltip>
-              )}
               <img
                 src={preview.src}
                 alt={preview.name}

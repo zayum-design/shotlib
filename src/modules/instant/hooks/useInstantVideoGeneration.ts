@@ -20,7 +20,6 @@ import { useTaskQueueStore, canSubmitForVariant } from '@/shared/stores/taskQueu
 import * as workflowApi from '@/modules/workflow/api/workflowApi';
 import { persistInstantData } from '@/modules/instant/utils/instantStorageUtils';
 import { useInstantVideoRequestBuilder } from './useInstantVideoRequestBuilder';
-import { useInstantVideoCompliance } from './useInstantVideoCompliance';
 import { message } from '@/shared/utils/message';
 
 interface UseInstantVideoGenerationOptions {
@@ -62,8 +61,6 @@ export function useInstantVideoGeneration({
 }: UseInstantVideoGenerationOptions) {
   const {
     buildVideoRequest,
-    replaceRequestUrlsWithAssetIds,
-    buildAssetIdMapFromCharacters,
   } = useInstantVideoRequestBuilder({
     canvasItems,
     projectId,
@@ -267,21 +264,9 @@ export function useInstantVideoGeneration({
   );
 
   const executeGenerateSceneVideo = useCallback(
-    async (itemId: string, requestData: { mode: string; requestBody: any }, passThroughAssetIdMap?: Map<string, string>) => {
-      const { mode, requestBody } = requestData;
-
-      const modelConfig = videoModels.find((m) => m.id === requestBody.model);
-      const needsCompliance = !!modelConfig?.supports?.requires_compliance;
-      let effectiveRequestData = requestData;
-      if (needsCompliance) {
-        const assetIdMap = passThroughAssetIdMap && passThroughAssetIdMap.size > 0
-          ? passThroughAssetIdMap
-          : buildAssetIdMapFromCharacters(characters, itemId);
-        if (assetIdMap.size > 0) {
-          effectiveRequestData = replaceRequestUrlsWithAssetIds(requestData, assetIdMap);
-        }
-      }
-      const { mode: effectiveMode, requestBody: effectiveBody } = effectiveRequestData;
+    async (itemId: string, requestData: { mode: string; requestBody: any }) => {
+      // 参考图直接使用图片自身 URL 提交，请求体不再做任何替换
+      const { mode: effectiveMode, requestBody: effectiveBody } = requestData;
 
       const nextSegments = segments.map((s) => {
         if (s.id !== activeSegmentId) return s;
@@ -402,71 +387,15 @@ export function useInstantVideoGeneration({
         }
       }
     },
-    [segments, activeSegmentId, projectId, videoModels, characters, replaceRequestUrlsWithAssetIds, buildAssetIdMapFromCharacters, failVideo, succeedVideo, pollBffJob]
+    [segments, activeSegmentId, projectId, videoModels, failVideo, succeedVideo, pollBffJob]
   );
-
-  const {
-    complianceDialogOpen,
-    setComplianceDialogOpen,
-    complianceItemId,
-    setComplianceItemId,
-    complianceRequestData,
-    setComplianceRequestData,
-    hasUncompliantImages,
-    handleComplyAndGenerate,
-    handleCheckComplete,
-  } = useInstantVideoCompliance({
-    executeGenerateSceneVideo,
-    videoApiPreviewMode,
-    showApiPreview,
-    replaceRequestUrlsWithAssetIds,
-    buildAssetIdMapFromCharacters,
-    saveCharacters,
-    characters,
-    scenes,
-    segments,
-    projectId,
-  });
 
   const handleGenerateSceneVideo = useCallback(
     async (itemId: string) => {
       const requestData = buildVideoRequest(itemId);
       if (!requestData) return;
 
-      const modelConfig = videoModels.find((m) => m.id === requestData.requestBody.model);
-      const needsCompliance = !!modelConfig?.supports?.requires_compliance;
-
-      // 首尾帧模式：合规依赖 imageAssetId（image_asset 行 UUID）。改动前生成的旧图未存储 assetId，
-      // 合规 dialog 无法对其入库（frameImages 的 assetKey 缺失会被过滤），提交时也不会替换为 asset://。
-      // 此处提前拦截并引导重新生成，避免旧图静默走到提交失败。
-      if (needsCompliance) {
-        const complianceItem = canvasItems.find((i) => i.id === itemId);
-        if (complianceItem?.videoGenerationMode === 'first_last_frame') {
-          const missingFrame = [
-            { url: complianceItem.firstFrameImageUrl, assetId: complianceItem.firstFrameImageAssetId, name: '首帧' },
-            { url: complianceItem.lastFrameImageUrl, assetId: complianceItem.lastFrameImageAssetId, name: '尾帧' },
-          ].find((f) => f.url && !f.assetId);
-          if (missingFrame) {
-            message.warning(`${missingFrame.name}图为旧版本，请重新生成以支持合规审查`);
-            return;
-          }
-        }
-      }
-
-      if (needsCompliance && hasUncompliantImages(itemId, canvasItems, characters)) {
-        setComplianceItemId(itemId);
-        setComplianceRequestData(requestData);
-        setComplianceDialogOpen(true);
-        return;
-      }
-
-      let finalRequestData = requestData;
-      if (needsCompliance) {
-        const assetIdMap = buildAssetIdMapFromCharacters(characters, itemId);
-        if (assetIdMap.size > 0) {
-          finalRequestData = replaceRequestUrlsWithAssetIds(requestData, assetIdMap);
-        }
-      }
+      const finalRequestData = requestData;
 
       if (videoApiPreviewMode) {
         const { mode, requestBody } = finalRequestData;
@@ -501,12 +430,12 @@ export function useInstantVideoGeneration({
         await executeGenerateSceneVideo(itemId, finalRequestData);
       }
     },
-    [buildVideoRequest, videoApiPreviewMode, showApiPreview, executeGenerateSceneVideo, videoModels, hasUncompliantImages, canvasItems, characters, replaceRequestUrlsWithAssetIds, buildAssetIdMapFromCharacters]
+    [buildVideoRequest, videoApiPreviewMode, showApiPreview, executeGenerateSceneVideo]
   );
 
   /**
    * 重试场景视频生成。严格按服务端任务真实状态分发，避免「失败」与「中断」混淆：
-   * - 已判失败（state=failed）→ 清除旧任务 ID，走完整重新提交（重建请求体 + 合规 assetId 解析 + 预览）。
+   * - 已判失败（state=failed）→ 清除旧任务 ID，走完整重新提交（重建请求体 + 预览）。
    *   反复轮询一个已 failed 的 job 只会拿到同一个失败结果，且不会重建请求体/触发预览。
    * - 中断仍在运行（waiting/active/delayed）→ 恢复轮询，避免重复提交导致重复扣费。
    * - 已完成 → 直接领取结果；若返回外部 taskId 则转外部任务继续轮询。
@@ -563,7 +492,7 @@ export function useInstantVideoGeneration({
         });
       }
 
-      // 已判失败：清除旧任务 ID 并走完整重新提交（重建请求体 + 预览 + 合规 assetId 解析）
+      // 已判失败：清除旧任务 ID 并走完整重新提交（重建请求体 + 预览）
       const discardAndRegenerate = async (reason: string) => {
         console.log(`[handleRetrySceneVideo] 任务已失败(${reason})，清除旧 ID 并重新生成 itemId=${itemId}`);
         removeTask(queueTaskId);
@@ -690,14 +619,5 @@ export function useInstantVideoGeneration({
     handleGenerateSceneVideo,
     handleRetrySceneVideo,
     handleVideoGenerationModeChange,
-    complianceDialogOpen,
-    setComplianceDialogOpen,
-    complianceItemId,
-    setComplianceItemId,
-    complianceRequestData,
-    setComplianceRequestData,
-    hasUncompliantImages,
-    handleComplyAndGenerate,
-    handleCheckComplete,
   };
 }

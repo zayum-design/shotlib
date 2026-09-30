@@ -9,7 +9,11 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "cli": "node scripts/cli.mjs",
+    "serve": "node scripts/serve.mjs",
+    "deploy": "bash deploy.sh",
+    "start": "bash deploy.sh"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",

@@ -280,7 +280,7 @@ export const EpisodePromptReviewButton: React.FC<EpisodePromptReviewButtonProps>
           />
           {mode === 'review' ? (
             <p className="text-sm text-text-muted">
-              根据剧本对片段/分镜提示词进行合理性二次校验审阅，输出审阅报告（剧本一致性、人物一致性、画面可拍性、视频提示词质量、片段连贯性、合规等）。
+              根据剧本对片段/分镜提示词进行合理性二次校验审阅，输出审阅报告（剧本一致性、人物一致性、画面可拍性、视频提示词质量、片段连贯性等）。
             </p>
           ) : (
             <div className="space-y-2">

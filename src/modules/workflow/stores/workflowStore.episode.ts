@@ -54,7 +54,7 @@ export interface EpisodeSliceActions {
   removeEpisode: (episodeId: string) => void;
   // 从已生成视频的片段衍生新片段（截尾帧→上传→建场景→插片段），成功返回新片段 id，失败返回 null
   deriveEpisodeFromVideo: (episodeId: string) => Promise<{ newEpisodeId: string } | null>;
-  generateEpisodeVideo: (episodeId: string, assetIdMap?: Map<string, string>) => Promise<void>;
+  generateEpisodeVideo: (episodeId: string) => Promise<void>;
   getEpisodeVideoPreviewData: (episodeId: string) => { endpoint: string; body: any } | null;
   pollVideoTaskStatus: (episodeId: string, taskId: string, taskQueueTaskId?: string) => Promise<void>;
   checkPendingVideoTasks: () => void;

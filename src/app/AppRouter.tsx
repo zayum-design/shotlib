@@ -18,6 +18,8 @@ import ProjectsPage from '@/modules/projects/ProjectsPage';
 import SettingsPage from '@/settings/SettingsPage';
 import { WorkflowPage } from '@/modules/workflow/pages/WorkflowPage';
 import { InstantCreatePage } from '@/modules/instant/pages/InstantCreatePage';
+import { GlobalFloatingButtons } from '@/shared/components/ui/GlobalFloatingButtons';
+import { GlobalLoading } from '@/shared/components/ui/GlobalLoading';
 
 export default function AppRouter() {
   return (
@@ -31,6 +33,10 @@ export default function AppRouter() {
           <Route path="/instant/:projectId" element={<InstantCreatePage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        {/* 全局浮动按钮:任务队列 + 请求日志面板(所有页面、所有构建可用) */}
+        <GlobalFloatingButtons />
+        {/* 全局 Loading 覆盖层:各 step 生成(剧本/审阅/分解/批量资产图等)期间的全屏遮罩,参照原项目根节点挂载 */}
+        <GlobalLoading />
       </App>
     </BrowserRouter>
   );

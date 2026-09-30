@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Plus, X, Film, Music, Image as ImageIcon, Loader2, Check, AlertTriangle } from 'lucide-react';
+import { Plus, X, Film, Music, Image as ImageIcon } from 'lucide-react';
 import { useState, useRef } from 'react';
 import type { ReferenceAsset, GenerateMode, ReferenceType } from '../types';
 
@@ -75,7 +75,6 @@ const Thumb = ({ asset, index, size = 'sm', className, style, onPreview, onRemov
   // generate 页面的 assetId 是内部 ID，经 assetUrlMap 解析为 URL；
   // 工作流分镜附件的 assetId 本身就是 URL，不在 assetUrlMap 中，直接使用
   const assetUrl = isDirectUrl(asset.assetId) ? asset.assetId : '';
-  const compliance = undefined as string | undefined;
   return (
   <div
     className={cn(
@@ -107,26 +106,6 @@ const Thumb = ({ asset, index, size = 'sm', className, style, onPreview, onRemov
         </div>
       )}
     </div>
-    {/* 合规检查状态角标（图片）：checking 转圈 / success 勾 / failed 叹号 */}
-    {asset.type === 'image' && compliance === 'checking' && (
-      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-0.5 rounded-lg bg-black/40">
-        <Loader2 size={14} className="animate-spin text-white" />
-        <span className="text-[8px] leading-none text-white/90">合规审查中</span>
-      </div>
-    )}
-    {asset.type === 'image' && compliance === 'success' && (
-      <div className="absolute -left-1 -top-1 z-10 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-green-500 text-white shadow">
-        <Check size={7} />
-      </div>
-    )}
-    {asset.type === 'image' && compliance === 'failed' && (
-      <div
-        className="absolute -left-1 -top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white shadow"
-        title="合规检查未通过"
-      >
-        <AlertTriangle size={9} />
-      </div>
-    )}
     <button
       type="button"
       onClick={(e) => {

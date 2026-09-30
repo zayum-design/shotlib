@@ -59,7 +59,6 @@ import { saveGeneratedAssets, extractInstantAssets } from '@/shared/utils/genera
 
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { HoverImagePreview, type HoverPreviewState } from '@/shared/components/ui/HoverImagePreview';
-import { VideoComplianceDialog } from '@/shared/components/ui/VideoComplianceDialog';
 import { InstantCreatePageHeader } from '../components/InstantCreatePageHeader';
 import { InstantCreateSegmentTabs } from '../components/InstantCreateSegmentTabs';
 import { InstantCreateSceneSider } from '../components/InstantCreateSceneSider';

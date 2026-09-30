@@ -516,6 +516,170 @@ function DefaultModelsSection() {
   );
 }
 
+// ---------- 对象存储(OSS)区块 ----------
+
+function OssSection() {
+  const { message } = AntdApp.useApp();
+  const [oss, setOss] = useState<AppSettings['oss']>();
+  const [loaded, setLoaded] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    settingsRepo.get().then((s) => {
+      if (!alive) return;
+      setOss(s.oss);
+      setLoaded(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const update = useCallback(
+    async (patch: Partial<NonNullable<AppSettings['oss']>>) => {
+      const next = { provider: 'aliyun' as const, bucket: '', region: '', accessKeyId: '', accessKeySecret: '', ...oss, ...patch };
+      setOss(next);
+      await settingsRepo.save({ oss: next });
+    },
+    [oss],
+  );
+
+  /** 连通性测试:上传一个 1x1 PNG 并立即删除,验证凭证/权限/公共读 */
+  const handleTest = useCallback(async () => {
+    if (!oss?.bucket || !oss.accessKeyId || !oss.accessKeySecret) {
+      message.warning('请先填写 Bucket / AccessKeyId / AccessKeySecret');
+      return;
+    }
+    setTesting(true);
+    try {
+      const { uploadBlobToOss } = await import('@/ai/services/oss-upload.service');
+      const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+      const bytes = Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([bytes], { type: 'image/png' });
+      const testId = `oss-test-${Date.now()}`;
+      const url = await uploadBlobToOss(blob, oss as NonNullable<AppSettings['oss']>, 'shotlib/_test', testId);
+      message.success(`OSS 连通正常:${url}`);
+    } catch (e) {
+      message.error(`OSS 测试失败:${(e as Error).message}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [oss, message]);
+
+  if (!loaded) return null;
+  const enabled = !!oss?.bucket && !!oss?.accessKeyId && !!oss?.accessKeySecret;
+
+  return (
+    <Card
+      title="对象存储(OSS)"
+      extra={
+        <Space>
+          <Button size="small" loading={testing} onClick={handleTest}>测试连接</Button>
+          <Text type="secondary" className="text-xs">生成图片立即上传</Text>
+        </Space>
+      }
+    >
+      <div className="flex flex-col gap-3 max-w-xl">
+        <Text type="secondary" className="text-xs">
+          配置后,生成的图片立即上传 OSS 并以持久公网 URL 进入业务数据,解决厂商产物 URL 过期(如火山 TOS 24h)
+          导致后续视频生成参考图失效的问题。要求 Bucket 为<b>公共读</b>;上传请求自动经「代理地址」转发,无需为 OSS 单独配 CORS。
+        </Text>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">服务商</Text>
+          <Select
+            className="flex-1"
+            value={oss?.provider || 'aliyun'}
+            options={[{ value: 'aliyun', label: '阿里云 OSS' }, { value: 'amazon', label: 'S3 兼容(预留)' }]}
+            onChange={(v) => update({ provider: v })}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">Bucket</Text>
+          <Input
+            placeholder="如 files-shotlib(公共读)"
+            value={oss?.bucket}
+            onChange={(e) => update({ bucket: e.target.value.trim() })}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">Region</Text>
+          <Input
+            placeholder="如 oss-cn-beijing"
+            value={oss?.region}
+            onChange={(e) => update({ region: e.target.value.trim() })}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">AccessKeyId</Text>
+          <Input
+            placeholder="RAM 访问密钥 ID"
+            value={oss?.accessKeyId}
+            onChange={(e) => update({ accessKeyId: e.target.value.trim() })}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">AccessKeySecret</Text>
+          <Input.Password
+            placeholder="RAM 访问密钥 Secret(仅存本机)"
+            value={oss?.accessKeySecret}
+            onChange={(e) => update({ accessKeySecret: e.target.value })}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          <Text className="w-24 shrink-0">自定义域名</Text>
+          <Input
+            placeholder="可选,公共访问基址/CDN(如 https://cdn.example.com)"
+            value={oss?.publicBaseUrl}
+            onChange={(e) => update({ publicBaseUrl: e.target.value.trim() || undefined })}
+          />
+        </div>
+        <Text type={enabled ? 'success' : 'secondary'} className="text-xs">
+          {enabled ? '✓ 已启用:生成图片将立即上传' : '未配置完整:生成图片仅存浏览器本地(厂商 URL 会过期)'}
+        </Text>
+      </div>
+    </Card>
+  );
+}
+
+// ---------- 提交模型预览 dialog 开关 ----------
+
+function PreviewDialogSection() {
+  const [enabled, setEnabled] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    settingsRepo.get().then((s) => {
+      if (!alive) return;
+      setEnabled(s.showPreviewRequestDialog === true);
+      setLoaded(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleChange = useCallback(async (checked: boolean) => {
+    setEnabled(checked);
+    await settingsRepo.save({ showPreviewRequestDialog: checked });
+  }, []);
+
+  if (!loaded) return null;
+
+  return (
+    <Card title="提交模型预览" extra={<Text type="secondary" className="text-xs">调试选项</Text>}>
+      <div className="flex items-center justify-between max-w-xl">
+        <div>
+          <Text className="block">提交模型前显示请求 JSON 预览 dialog</Text>
+          <Text type="secondary" className="text-xs">开启后，每次调用模型前会先弹出 JSON 预览确认；关闭则直接提交。</Text>
+        </div>
+        <Switch checked={enabled} onChange={handleChange} />
+      </div>
+    </Card>
+  );
+}
+
 // ---------- 数据管理区块 ----------
 
 function formatBytes(bytes: number): string {
@@ -749,6 +913,8 @@ export default function SettingsPage() {
           <ApiKeySection />
           <ProxySection />
           <DefaultModelsSection />
+          <OssSection />
+          <PreviewDialogSection />
           <DataSection />
         </div>
         <div className="mt-6 flex items-center gap-2">

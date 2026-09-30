@@ -21,7 +21,7 @@ export type AspectRatio = '9:16' | '16:9' | '1:1' | '21:9';
 // 即时创作角色
 export interface InstantCharacter {
   id: string;
-  assetId?: string; // 合规认证返回的 assetId（其他场景留空）
+  assetId?: string; // 资产唯一标识（历史数据可能留空）
   name: string;
   avatar?: string; // 运行时解析后的当前头像 URL（不持久化）
   taskSummary: string;
@@ -46,7 +46,7 @@ export interface InstantCharacter {
 // 即时创作场景
 export interface InstantScene {
   id: string;
-  assetId?: string; // 合规认证返回的 assetId（其他场景留空）
+  assetId?: string; // 资产唯一标识（历史数据可能留空）
   name: string;
   imageUrl?: string; // 运行时解析后的当前场景图 URL（不持久化）
   prompt: string;

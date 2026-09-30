@@ -14,21 +14,12 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Modal, Button, Tooltip, Select, Spin, Input, Checkbox } from 'antd';
-import { User, Scan, Trash2, Check, RefreshCw, Plus, ZoomIn, Upload, Bookmark, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { User, Scan, Trash2, RefreshCw, Plus, ZoomIn, Upload, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
-import { createCharacterComplianceAsset, type UserMaterialItem } from '@/shared/api/userMaterialApi';
+import type { UserMaterialItem } from '@/shared/api/userMaterialApi';
 import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 import { persistInstantData } from '@/modules/instant/utils/instantStorageUtils';
 import { saveInstantToServer } from '@/modules/instant/utils/instantSyncUtils';
-
-// 通过缓存读取图片的合规状态（避免直接读取已被剥离的 isCompliant 字段）
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 import { removePortraitFromSegments } from '@/modules/instant/utils/instantPromptUtils';
 import { generateCharacterPortraitApi, generateCharacterViewsApi, generateAvatarApi } from '@/modules/workflow/api/characterApi';
 import { generatePortraitPromptApi } from '@/modules/workflow/api/sceneApi';
@@ -38,7 +29,6 @@ import type { InstantCharacter } from '@/shared/types/project';
 import { message } from '@/shared/utils/message';
 import { uploadFile } from '@/shared/utils/upload';
 import { AvatarUploadDialog } from '@/shared/components/ui/AvatarUploadDialog';
-import { buildSeedanceCompliance, type SeedanceCompliance } from '@/modules/workflow/providers/volcengine/compliance';
 
 interface Props {
   page: UseInstantCreatePageReturn;
@@ -51,9 +41,6 @@ interface Props {
  */
 export const MultiViewModal: React.FC<Props> = ({ page }) => {
   const char = page.multiViewChar;
-
-  // 头像 hover 添加到素材库状态
-  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
 
   // 头像上传弹窗（本地上传 / 真人资产 / 素材库 三来源）
   const [avatarUploadDialogOpen, setAvatarUploadDialogOpen] = useState(false);
@@ -154,7 +141,7 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
   };
 
   // === 头像上传（本地上传 / 真人资产 / 素材库）相关 ===
-  // 为真人资产/素材库头像创建 image_asset，返回 assetId（用于合规缓存与持久化）
+  // 为真人资产/素材库头像创建 image_asset，返回 assetId（用于持久化与刷新还原）
   const ensureAvatarImageAssetId = async (
     asset: UserMaterialItem,
     metadata: Record<string, unknown>,
@@ -201,7 +188,7 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
         updates.portraitImages = (char.portraitImages || []).map((img) => ({ ...img, imageUrl: '', isGenerating: false }));
       }
       updateCharField(updates);
-      // 清除被清空图片的前端合规缓存，使角标立即消失
+      // 清除被清空图片的前端缓存，保持数据一致
       if (clearFullBody) {
         (char.fullBodyImages || []).forEach((img) => {
           if (img.assetId) localApi.invalidateCachedImageData(img.assetId);
@@ -271,19 +258,6 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
       { source: 'user_asset', userAssetId: asset.id, name: asset.name },
       'handleUserMaterialSelect',
     );
-    // real_person 头像已通过真人验证，迁移合规信息到新 image_asset.data.seedance，使合规角标识别为已合规
-    const seedanceAssetId = asset.data?.assetId as string | undefined;
-    if (assetId && page.projectId && page.projectId !== 'default' && seedanceAssetId) {
-      try {
-        await localApi.patchImageAssetData(
-          page.projectId,
-          assetId,
-          buildSeedanceCompliance({ assetId: seedanceAssetId, isCompliant: true, groupId: asset.data?.groupId, url: asset.sourceUrl }),
-        );
-      } catch (e) {
-        console.error('[handleUserMaterialSelect] 迁移合规信息失败:', e);
-      }
-    }
     applyNewAvatar({ assetId, imageUrl: asset.sourceUrl, name: asset.name || '头像', isPortrait: true });
     setAvatarUploadDialogOpen(false);
     message.success('已使用真人资产作为头像');
@@ -296,7 +270,6 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
     isPortrait: true,
     userAssetId: asset.id,
     assetType: asset.assetType,
-    isCompliant: true,
   });
 
   const handleCharacterAssetSelect = async (asset: UserMaterialItem) => {
@@ -305,63 +278,11 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
       { source: 'user_asset', userAssetId: asset.id, name: asset.name },
       'handleCharacterAssetSelect',
     );
-    const seedance = asset.data?.seedance as SeedanceCompliance | undefined;
-    if (assetId && page.projectId && page.projectId !== 'default' && seedance?.assetId) {
-      try {
-        await localApi.patchImageAssetData(
-          page.projectId,
-          assetId,
-          buildSeedanceCompliance({ assetId: seedance.assetId, isCompliant: seedance.isCompliant ?? true, groupId: seedance.groupId, url: seedance.url }),
-        );
-      } catch (e) {
-        console.error('[handleCharacterAssetSelect] 迁移合规信息失败:', e);
-      }
-    }
     applyNewAvatar({ ...buildAvatarFromCharacterAsset(asset), assetId });
     setAvatarUploadDialogOpen(false);
     message.success('已使用素材库图片作为头像');
   };
 
-  // === 添加到素材库 ===
-  const handleAddToAssetLibrary = async () => {
-    const avatarImg = char.avatarImages?.[0];
-    if (!char.avatar || !avatarImg) return;
-    setIsAddingToLibrary(true);
-    try {
-      // 构造与 creator_instant_assets.data 一致的元数据（character_avatar 行）
-      const data = { ...char };
-      delete (data as any).id;
-      delete (data as any).avatar;
-      delete (data as any).portraitImages;
-      delete (data as any).fullBodyImages;
-
-      const res = await createCharacterComplianceAsset(
-        char.avatar,
-        char.avatar,
-        data,
-        char.name,
-      );
-      if (res.success && res.data) {
-        // 同步更新头像素材库关联状态
-        const updatedImages = [...(char.avatarImages || [])];
-        if (updatedImages[0]) {
-          updatedImages[0] = {
-            ...updatedImages[0],
-            userAssetId: res.data.id,
-            assetType: res.data.assetType,
-          };
-          updateCharField('avatarImages', updatedImages);
-        }
-        message.success('已添加到个人素材库');
-      } else {
-        message.error(res.message || '添加失败');
-      }
-    } catch (err: any) {
-      message.error(err?.message || '添加失败，请重试');
-    } finally {
-      setIsAddingToLibrary(false);
-    }
-  };
 
   // === 真正提交头像生成 ===
   const executeRegenerateAvatar = async (
@@ -389,7 +310,7 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
       if (urls.length > 0) {
         const newImages = urls.map((url) => ({ imageUrl: url, name: '头像', isPortrait: true, prompt }));
         const updates: Partial<InstantCharacter> = { avatarImages: newImages, avatar: urls[0] };
-        // 清空时只置空 URL，保留 id/assetId；后端保存时会按原始格式重写 data（去合规字段）
+        // 清空时只置空 URL，保留 id/assetId；后端保存时会按原始格式重写 data
         if (clearFullBody) {
           updates.fullBodyImages = (char.fullBodyImages || []).map((img) => ({
             ...img,
@@ -404,8 +325,8 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
             isGenerating: false,
           }));
         }
-        // 清除前端合规缓存：头像（char.id）+ 被清空的形象照/多视图（assetId 保留），
-        // 使右上角合规角标立即消失，无需刷新页面（后端 data 已重写，前端缓存需同步）
+        // 清除前端缓存：头像（char.id）+ 被清空的形象照/多视图（assetId 保留），
+        // 无需刷新页面（后端 data 已重写，前端缓存需同步）
         localApi.invalidateCachedImageData(char.id);
         if (clearFullBody) {
           (char.fullBodyImages || []).forEach((img) => {
@@ -418,7 +339,7 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
           });
         }
         updateCharField(updates);
-        // 立即同步到服务器，确保后端按原始格式重写 data（去合规），不等防抖
+        // 立即同步到服务器，确保后端按原始格式重写 data，不等防抖
         if (page.projectId && page.projectId !== 'default') {
           const nextChar = { ...char, ...updates } as InstantCharacter;
           const nextChars = page.characters.map((c) => (c.id === char.id ? nextChar : c));
@@ -724,12 +645,11 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
 
     const pid = page.projectId;
     if (pid && pid !== 'default' && editingPortraitIndex !== null && hasRegenerated) {
-      // 编辑重新生图：立即更新现有 image_asset 行，清空 seedance 合规状态
+      // 编辑重新生图：立即更新现有 image_asset 行
       try {
         await localApi.patchImageAssetData(pid, portraitAssetKey, {
           original_url: portraitPreviewUrl,
           source: 'ai',
-          seedance: null,
           metadata: {
             prompt: portraitPrompt.trim(),
             name: portraitTitle.trim(),
@@ -772,7 +692,7 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
       message.success('形象照已添加');
     }
 
-    // 立即保存到服务器，确保 image_asset 行被创建/更新，避免合规检查前资产不存在
+    // 立即保存到服务器，确保 image_asset 行被创建/更新（资产先行落库）
     if (pid && pid !== 'default') {
       try {
         const saved = await saveInstantToServer(pid, {
@@ -868,16 +788,6 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
                 className="relative w-24 h-24 rounded-lg overflow-hidden bg-bg-tertiary flex-shrink-0 group cursor-pointer"
                 onClick={() => currentAvatarUrl && page.openImagePreview(currentAvatarUrl, `${char.name} - 头像`)}
               >
-                {/* 右上角合规标识：检查所有类型的图片是否已合规 */}
-                {(char.avatarImages?.some(img => getIsCompliant(img)) ||
-                  char.portraitImages?.some(img => getIsCompliant(img)) ||
-                  char.fullBodyImages?.some(img => getIsCompliant(img))) && (
-                  <Tooltip title="已通过合规检查">
-                    <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                      <Check size={8} strokeWidth={4} />
-                    </div>
-                  </Tooltip>
-                )}
                 {char.isGeneratingAvatar ? (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-text-muted">
                     <Spin />
@@ -890,24 +800,8 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
                       alt={char.name}
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                       <ZoomIn size={20} className="text-white" />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAddToAssetLibrary();
-                        }}
-                        disabled={isAddingToLibrary}
-                        className="flex items-center gap-1 px-2 py-1 rounded-full text-white text-[10px] pointer-events-auto transition-colors bg-white/20 hover:bg-white/40"
-                        title="添加到我的个人素材库"
-                      >
-                        {isAddingToLibrary ? (
-                          <Spin size="small" />
-                        ) : (
-                          <Bookmark size={10} />
-                        )}
-                        添加
-                      </button>
                     </div>
                   </>
                 ) : (
@@ -1019,14 +913,6 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
                       style={{ aspectRatio: '9/16', width: '72px' }}
                       onClick={() => img.imageUrl && page.openImagePreview(img.imageUrl, `${char.name} - 形象照 ${index + 1}`)}
                     >
-                      {/* 合规标识 */}
-                      {getIsCompliant(img) && (
-                        <Tooltip title="已通过合规检查">
-                          <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                            <Check size={8} strokeWidth={4} />
-                          </div>
-                        </Tooltip>
-                      )}
                       {img.imageUrl ? (
                         <img
                           src={img.imageUrl}
@@ -1100,13 +986,6 @@ export const MultiViewModal: React.FC<Props> = ({ page }) => {
                 </div>
               ) : hasFullBody ? (
                 <>
-                  {getIsCompliant(currentFullBody) && (
-                    <Tooltip title="已通过合规检查">
-                      <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                        <Check size={8} strokeWidth={4} />
-                      </div>
-                    </Tooltip>
-                  )}
                   <img
                     src={currentFullBody?.imageUrl}
                     alt="人物多视图"

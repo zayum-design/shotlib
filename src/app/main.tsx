@@ -18,6 +18,7 @@ import './index.css'
 import AppRouter from './AppRouter.tsx'
 import { useThemeStore } from '@/shared/stores/themeStore'
 import { useProjectStore } from '@/shared/stores/projectStore'
+import { applyRuntimeConfig } from '@/storage/runtime-config'
 
 // ========== 控制台日志开关(运行时,由 .env 的 VITE_DEBUG_LOG 控制) ==========
 if (import.meta.env.VITE_DEBUG_LOG !== 'true') {
@@ -64,10 +65,16 @@ const ProjectInitializer = () => {
   return null;
 };
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <ThemeInitializer />
-    <ProjectInitializer />
-    <AppRouter />
-  </StrictMode>,
-)
+// 部署级配置(npm run cli 写入的 app-config.json)先于渲染应用:
+// 保证设置页首次读取 settingsRepo 时即为合并后的值;失败不阻塞启动
+applyRuntimeConfig()
+  .catch((e) => console.error('[runtime-config] 应用失败:', e))
+  .finally(() => {
+    createRoot(document.getElementById('root')!).render(
+      <StrictMode>
+        <ThemeInitializer />
+        <ProjectInitializer />
+        <AppRouter />
+      </StrictMode>,
+    )
+  })

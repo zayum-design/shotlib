@@ -17,7 +17,6 @@ import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { MapPin, Sun, Cloud, RefreshCw, Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, ZoomIn, Upload, Eye, Bookmark, Trash2 } from 'lucide-react';
 import type { Scene } from '../../types';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
-import { useProjectStore } from '../../stores/projectStore';
 import { useState, useMemo } from 'react';
 import { uploadFile } from '@/shared/utils/upload';
 import { createLocalAsset } from '@/shared/api/userMaterialApi';
@@ -39,7 +38,7 @@ interface SceneCardProps {
 }
 
 export const SceneCard: React.FC<SceneCardProps> = ({ scene }) => {
-  const { updateScene, regenerateSceneImage, generateSceneImages, imageModels, currentProjectId, currentEpisodeNumber, sceneImageAspectRatio, activeSceneIds } = useWorkflowStore();
+  const { updateScene, regenerateSceneImage, generateSceneImages, imageModels, currentProjectId, currentEpisodeNumber, activeSceneIds } = useWorkflowStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [sceneUploadDialogOpen, setSceneUploadDialogOpen] = useState(false);
@@ -83,20 +82,8 @@ export const SceneCard: React.FC<SceneCardProps> = ({ scene }) => {
     setPreviewOpen(true);
   };
 
-  const projectAspectRatio = useProjectStore((s) => {
-    const project = s.projects.find((p) => p.id === s.currentProjectId);
-    return project?.aspectRatio || '16:9';
-  });
-  // 场景图比例优先用后端 env 下发值（sceneImageAspectRatio），未配置时回退到项目比例
-  const aspectRatio = sceneImageAspectRatio || projectAspectRatio;
-  const aspectClass =
-    aspectRatio === '9:16'
-      ? 'aspect-[9/16]'
-      : aspectRatio === '21:9'
-      ? 'aspect-[21/9]'
-      : aspectRatio === '1:1'
-      ? 'aspect-square'
-      : 'aspect-video';
+  // 场景图显示固定 16:9(与生成比例保持一致,不随项目比例变化)
+  const aspectClass = 'aspect-video';
 
   const handleFieldChange = (field: keyof Scene, value: string) => {
     updateScene(scene.id, { [field]: value });

@@ -30,7 +30,7 @@ import type { ImageAssetRecord, ApiResult } from './types';
 /** 缓存中存放本地地址的保留键(对齐原 service 层行为) */
 export const LOCAL_URL_CACHE_KEY = '__local_url';
 
-/** image_asset.data 运行时缓存:assetId → data(合规状态等由调用方读取) */
+/** image_asset.data 运行时缓存:assetId → data(生成状态等由调用方读取) */
 const imageDataCache = new Map<string, Record<string, any>>();
 
 /** objectURL 缓存:assetId → blob URL(跨项目共享,项目切换时统一 revoke) */
@@ -47,15 +47,29 @@ function recordKey(projectId: string, assetId: string): string {
 export const imageRepo = {
   // ---------- objectURL 管理 ----------
 
-  /** 获取已缓存的 objectURL(未缓存返回 undefined,同步) */
-  peekUrl(assetId: string): string | undefined {
-    return objectUrlCache.get(assetId);
+  /** 反查:objectURL(blob:) → assetId(发厂商前把本地引用还原为 OSS URL/data URL 用) */
+  findAssetIdByObjectUrl(url: string): string | undefined {
+    if (!url.startsWith('blob:')) return undefined;
+    for (const [assetId, cached] of objectUrlCache) {
+      if (cached === url) return assetId;
+    }
+    return undefined;
   },
 
-  /** 为记录建立 objectURL 并缓存(blob 记录优先,否则用 originalUrl/remoteUrl) */
+  /**
+   * 为记录解析可展示 URL:
+   * 1. 优先 OSS 持久地址(data.ossUrl)——数据层与显示层统一,跨刷新/跨设备有效
+   * 2. 无 OSS 时本地 Blob → objectURL(仅当前会话有效,未配置 OSS 时的兜底)
+   * 3. 无 Blob 用 originalUrl/remoteUrl
+   */
   async ensureUrl(assetId: string, record: ImageAssetRecord): Promise<string | undefined> {
     const cached = objectUrlCache.get(assetId);
     if (cached) return cached;
+    const ossUrl = record.data?.ossUrl;
+    if (typeof ossUrl === 'string' && /^https?:\/\//.test(ossUrl)) {
+      objectUrlCache.set(assetId, ossUrl);
+      return ossUrl;
+    }
     let url: string | undefined;
     if (record.blob) {
       url = URL.createObjectURL(record.blob);
@@ -98,11 +112,6 @@ export const imageRepo = {
 
   invalidateCachedImageData(assetId: string): void {
     imageDataCache.delete(assetId);
-  },
-
-  /** 缓存快照(合规反查等扫描场景用) */
-  getCacheEntries(): [string, Record<string, any>][] {
-    return Array.from(imageDataCache.entries());
   },
 
   // ---------- CRUD ----------

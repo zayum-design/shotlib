@@ -15,7 +15,7 @@
 /**
  * useInstantVideoGroup.ts — 即时创作视频生成相关子 hook 聚合
  *
- * 聚合场景视频生成、首尾帧管理、合规检查等能力。
+ * 聚合场景视频生成、首尾帧管理等能力。
  */
 import { useInstantVideoGeneration } from './useInstantVideoGeneration';
 import { useInstantFirstLastFrameManager } from './useInstantFirstLastFrameManager';

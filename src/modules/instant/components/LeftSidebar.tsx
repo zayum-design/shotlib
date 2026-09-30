@@ -15,20 +15,10 @@
 import { useState, useEffect } from 'react';
 import { Tabs, Button, Tooltip, Dropdown } from 'antd';
 import type { MenuProps } from 'antd';
-import { Users, Map, Plus, UserPlus, User, Image as ImageIcon, MoreHorizontal, Check, Lock, Unlock, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Users, Map, Plus, UserPlus, User, Image as ImageIcon, MoreHorizontal, Lock, Unlock, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { userStorage } from '@/shared/utils/userScopedStorage';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 import type { NewCharacter } from './CreateCharacterDialog';
 import type { NewScene } from './CreateSceneDialog';
-
-/** 从缓存读取图片合规状态 */
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 
 interface LeftSidebarProps {
   characters: Array<NewCharacter & { avatarImages?: Array<{ imageUrl?: string; assetId?: string }> }>;
@@ -175,16 +165,6 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = (props) => {
                           className={`${isMale ? 'text-blue-400' : isFemale ? 'text-pink-400' : 'text-text-muted'}`}
                         />
                       </div>
-                    )}
-                    {/* 检查所有类型的图片是否已合规 */}
-                    {(char.avatarImages?.some(img => getIsCompliant(img)) ||
-                      char.portraitImages?.some(img => getIsCompliant(img)) ||
-                      char.fullBodyImages?.some(img => getIsCompliant(img))) && (
-                      <Tooltip title="已通过合规检查">
-                        <div className={`absolute -top-0.5 -right-0.5 z-10 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm ${collapsed ? 'w-3 h-3' : 'w-3.5 h-3.5'}`}>
-                          <Check size={collapsed ? 7 : 8} strokeWidth={4} />
-                        </div>
-                      </Tooltip>
                     )}
                   </div>
                 );

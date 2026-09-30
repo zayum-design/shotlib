@@ -27,6 +27,22 @@ const PREF_KEY = 'user-preference';
 /** 每厂商代理策略 */
 export type ProxyMode = 'direct' | 'proxy';
 
+/** 对象存储配置(生成图片持久化;凭证仅存本机,不上传任何服务器) */
+export interface OssConfig {
+  /** 存储服务商:aliyun=阿里云 OSS;amazon=S3 兼容(预留) */
+  provider: 'aliyun' | 'amazon';
+  /** 存储桶名(需公共读,厂商服务器要能拉取参考图) */
+  bucket: string;
+  /** 地域,如 oss-cn-beijing(阿里云);us-east-1(S3) */
+  region: string;
+  accessKeyId: string;
+  accessKeySecret: string;
+  /** 自定义 endpoint(可选,默认 https://{region}.aliyuncs.com) */
+  endpoint?: string;
+  /** 公共访问基址(可选,挂 CDN/自定义域名时填,如 https://cdn.example.com) */
+  publicBaseUrl?: string;
+}
+
 export interface AppSettings {
   /** 厂商 API Key:providerId → key */
   apiKeys: Record<string, string>;
@@ -36,6 +52,10 @@ export interface AppSettings {
   providerProxyMode: Record<string, ProxyMode>;
   /** 全局默认模型回退:text/image/video/voice */
   defaultModels: { text?: string; image?: string; video?: string; voice?: string };
+  /** 是否在提交模型前显示 JSON 预览 dialog(默认 false:直接提交) */
+  showPreviewRequestDialog?: boolean;
+  /** 对象存储配置(配置后生成的图片立即上传,持久公网 URL 供后续生成引用) */
+  oss?: OssConfig;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {

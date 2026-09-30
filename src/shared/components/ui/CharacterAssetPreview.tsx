@@ -13,21 +13,10 @@
 // limitations under the License.
 
 import { useEffect, useMemo } from 'react';
-import { CheckCircle2 } from 'lucide-react';
 import { Spin } from 'antd';
 import type { Character } from '@/shared/types';
 import { useAssetImageResolver } from '@/modules/workflow/hooks/useAssetImageResolver';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
-
-/** 从 localApi 缓存读取图片合规状态 */
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 
 interface CharacterAssetPreviewProps {
   character: Character;
@@ -93,11 +82,6 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
               className="w-14 h-14 rounded object-cover cursor-pointer hover:opacity-80 transition-opacity"
               onClick={() => onPreview([avatarUrl], 0, `${character.name} - 头像`)}
             />
-            {getIsCompliant(avatarImg) && (
-              <div className="absolute -top-1 -right-1 w-5 h-5 bg-accent-success rounded-full flex items-center justify-center shadow-sm">
-                <CheckCircle2 size={12} className="text-white" />
-              </div>
-            )}
             {character.avatarSource === 'asset' ? (
               <div className="absolute -bottom-1 -left-1 px-1 py-0.5 bg-amber-500 text-white text-[10px] font-bold rounded shadow-sm">
                 真人
@@ -140,11 +124,6 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
                   onPreview([multiViewUrl], 0, `${character.name} - 多视图`)
                 }
               />
-              {getIsCompliant(multiViewImg) && (
-                <div className="absolute top-0 right-0 w-5 h-5 bg-accent-success rounded-full flex items-center justify-center shadow-sm">
-                  <CheckCircle2 size={12} className="text-white" />
-                </div>
-              )}
             </div>
           ) : (
             <div
@@ -168,7 +147,7 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
                       <img
                         src={slot.resolvedUrl}
                         alt={`${character.name}形象照${idx + 1}`}
-                        className="h-20 aspect-[9/16] object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                        className="h-20 aspect-video object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
                         onClick={() => {
                           const urls = resolvedPortraitSlots
                             .filter((s) => s.resolvedUrl)
@@ -178,11 +157,6 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
                           onPreview(urls, imageIdx, `${character.name} - 形象照`);
                         }}
                       />
-                      {getIsCompliant(slot) && (
-                        <div className="absolute top-0 right-0 w-5 h-5 bg-accent-success rounded-full flex items-center justify-center shadow-sm">
-                          <CheckCircle2 size={12} className="text-white" />
-                        </div>
-                      )}
                     </div>
                   );
                 }
@@ -190,7 +164,7 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
                   return (
                     <div
                       key={idx}
-                      className="h-20 aspect-[9/16] bg-bg-secondary rounded flex items-center justify-center"
+                      className="h-20 aspect-video bg-bg-secondary rounded flex items-center justify-center"
                     >
                       <Spin size="small" />
                     </div>
@@ -203,7 +177,7 @@ export const CharacterAssetPreview: React.FC<CharacterAssetPreviewProps> = ({
         ) : (
           <div className="flex-1">
             <div className="text-[10px] text-text-muted mb-1">形象照</div>
-            <div className="h-20 aspect-[9/16] bg-bg-secondary rounded flex items-center justify-center text-[10px] text-text-muted">
+            <div className="h-20 aspect-video bg-bg-secondary rounded flex items-center justify-center text-[10px] text-text-muted">
               待生成
             </div>
           </div>

@@ -14,20 +14,10 @@
 
 import React from 'react';
 import { Button, Select, Tooltip, Spin } from 'antd';
-import { RefreshCw, Image as ImageIcon, ZoomIn, Upload, Check } from 'lucide-react';
+import { RefreshCw, Image as ImageIcon, ZoomIn, Upload } from 'lucide-react';
 import type { Character } from '@/shared/types';
 import { FULL_BODY_LABELS } from '@/shared/types';
 import { useResolvedImageUrl } from '@/modules/workflow/hooks/useWorkflowImageResolver';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
-
-/** 从 localApi 缓存读取图片合规状态 */
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 
 interface ImageModel {
   id: string;
@@ -83,15 +73,7 @@ export const CharacterFullBodySection: React.FC<CharacterFullBodySectionProps> =
             <span className="mt-2 text-xs text-white">生成中...</span>
           </div>
         ) : hasFullBodyResolved ? (
-          <>
-            {getIsCompliant(fullBodyImage) && (
-              <Tooltip title="已通过合规检查">
-                <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                  <Check size={8} strokeWidth={4} />
-                </div>
-              </Tooltip>
-            )}
-            <img
+          <>            <img
               src={resolvedFullBodyUrl}
               alt={FULL_BODY_LABELS[0]}
               className="w-full h-full object-cover"

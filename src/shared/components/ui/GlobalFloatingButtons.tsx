@@ -14,7 +14,6 @@
 
 import { Terminal, Loader2, Eye, AlignLeft, AlignRight, ListTodo } from 'lucide-react';
 import { Switch } from 'antd';
-import { useEffect } from 'react';
 import { LogPanel } from './LogPanel';
 import { UserTaskPanel } from './UserTaskPanel';
 import { useLogStore } from '../../stores/logStore';
@@ -22,38 +21,15 @@ import { useTaskQueueStore } from '../../stores/taskQueueStore';
 import { useApiPreviewStore } from '../../stores/apiPreviewStore';
 import { usePanelPositionStore } from '../../stores/panelPositionStore';
 
-const STORAGE_KEY = 'shotlib_api_preview_enabled';
-
-const IS_DEV = import.meta.env.DEV;
-
 export function GlobalFloatingButtons() {
   const { logs, setLogPanelOpen } = useLogStore();
   const { tasks, setTaskPanelOpen } = useTaskQueueStore();
   const { apiPreviewEnabled, setApiPreviewEnabled } = useApiPreviewStore();
   const { position, setPosition } = usePanelPositionStore();
 
-  // 开源版无登录体系与角色区分:开发工具仅开发模式显示
-  const showDevTools = IS_DEV;
-
-  useEffect(() => {
-    if (!showDevTools) {
-      if (apiPreviewEnabled) setApiPreviewEnabled(false);
-      try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-      return;
-    }
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored !== null) {
-        const enabled = stored === 'true';
-        if (enabled !== apiPreviewEnabled) {
-          setApiPreviewEnabled(enabled);
-        }
-      }
-    } catch {
-      // ignore
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDevTools]);
+  // 本地部署无权限体系:日志/预览工具在开发与部署构建下均可用
+  // (预览开关的持久化由设置页 + settingsRepo 负责,这里只展示与切换)
+  const showDevTools = true;
 
   const activeCount = tasks.filter(
     (t) => t.status === 'pending' || t.status === 'running' || t.status === 'polling'

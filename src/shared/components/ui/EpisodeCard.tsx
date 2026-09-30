@@ -15,7 +15,7 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Spin, Tooltip, Modal, Slider, Checkbox, Popconfirm, Divider, Select, Tabs, Radio } from 'antd';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
-import { Edit3, Play, Video, Plus, Trash2, Film, Image as ImageIcon, ZoomIn, CheckCircle2, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Edit3, Play, Video, Plus, Trash2, Film, Image as ImageIcon, ZoomIn, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { Episode, CameraMovement, ShotType, CameraAngle, LightingType, MoodType } from '../../types';
 import { CAMERA_MOVEMENTS, SHOT_TYPES, CAMERA_ANGLES, LIGHTING_TYPES, MOOD_TYPES } from '../../types';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
@@ -27,17 +27,13 @@ import { useImagePreview } from './hooks/useImagePreview';
 import { VisualPromptEditor } from './VisualPromptEditor';
 import { ImagePreviewModal } from './ImagePreviewModal';
 import { HoverImagePreview, type HoverPreviewState } from './HoverImagePreview';
-import { VideoComplianceDialog } from './VideoComplianceDialog';
 import { EpisodeCardVideoPanel } from './EpisodeCardVideoPanel';
 import { PromptEditModal } from './PromptEditModal';
 import { ShotEditModal } from './ShotEditModal';
 import { EpisodeShotListSection } from './EpisodeShotListSection';
 import { EpisodeFirstLastFrameSection } from './EpisodeFirstLastFrameSection';
-import { generateShotPrompt, renderVisualPrompt, filterCharacterPortraitsByEpisode } from '@/modules/workflow/utils/workflowUtils';
-import { checkEpisodeVideoCompliance } from '@/modules/workflow/utils/videoComplianceCheck';
+import { generateShotPrompt, renderVisualPrompt } from '@/modules/workflow/utils/workflowUtils';
 import { stripPromptToText } from '@/modules/workflow/stores/workflowStore.episode.utils';
-import { getComplianceHelpers, readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
-import { localApi } from '@/storage';
 import { useProjectStore } from '../../stores/projectStore';
 import { message } from '../../utils/message';
 
@@ -68,9 +64,6 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
 
   // 角色/场景/形象照 hover 预览（fixed 定位，避免被 overflow 裁剪）
   const [hoverPreview, setHoverPreview] = useState<HoverPreviewState | null>(null);
-
-  // 视频合规检查对话框状态
-  const [complianceDialogOpen, setComplianceDialogOpen] = useState(false);
 
   // 新增/编辑分镜的状态
 
@@ -110,24 +103,6 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
 
   const shots = episode.shots || [];
 
-  // 分镜参考附件中「被提示词实际引用」的图片（!<ref type="image">），
-  // 供合规 dialog 审核；assetKey 为 image_asset 行 UUID（历史附件可能缺失）
-  const usedShotRefImages = useMemo(() => {
-    const allPrompts = [...shots.map((s) => s.prompt || ''), episode.videoPrompt || ''].join(' ');
-    const usedUrls = new Set<string>();
-    for (const match of allPrompts.matchAll(/!<ref\s+url="([^"]+)"\s+type="image">/g)) {
-      usedUrls.add(match[1]);
-    }
-    if (usedUrls.size === 0) return [];
-    const byUrl = new Map<string, { imageUrl: string; imageName: string; assetKey?: string }>();
-    for (const s of shots) {
-      for (const a of s.referenceAssets || []) {
-        if (a.type !== 'image' || !usedUrls.has(a.assetId) || byUrl.has(a.assetId)) continue;
-        byUrl.set(a.assetId, { imageUrl: a.assetId, imageName: a.name || '参考附件', assetKey: a.assetKey });
-      }
-    }
-    return [...byUrl.values()];
-  }, [shots, episode.videoPrompt]);
 
   const {
     isAddingShot,
@@ -290,146 +265,12 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
 
   const handleGenerate = async () => {
     try {
-      // 合规前置检查（与批量生成共用同一套门禁逻辑，见 videoComplianceCheck.ts）
-      const { hasUncompliant } = checkEpisodeVideoCompliance({
-        episode,
-        characters,
-        scenes,
-        videoModels,
-        currentEpisodeNumber: currentEpisodeNumber ?? 1,
-      });
-      if (hasUncompliant) {
-        // 存在未完成合规入库的图片：打开合规检查对话框
-        setComplianceDialogOpen(true);
-        return;
-      }
-
-      // 正常生成视频
+      // 直接生成视频（参考图直接使用图片自身 URL）
       await generateEpisodeVideo(episode.id);
       // 成功/失败的消息提示已在 generateEpisodeVideo / pollVideoTaskStatus 中处理
     } catch {
       // 错误已在 generateEpisodeVideo 中处理并提示，此处不再重复
     }
-  };
-
-  // 合规检查完成后：把厂商合规结果写入 image_asset.data[compliance_key]（厂商隔离），
-  // 缓存由 patchImageAssetData 自动更新，通过 bumpImageComplianceVersion 触发 UI 重渲染。
-  const handleCheckComplete = async (
-    successImages: Array<{
-      characterId?: string;
-      sceneId?: string;
-      imageUrl: string;
-      assetId?: string;
-      assetKey?: string;
-      groupId?: string;
-      url?: string;
-    }>,
-  ) => {
-    const validImages = successImages.filter((img) => !!img.assetId && !!img.assetKey);
-    // 诊断：被过滤掉的图（assetKey 即 image_asset UUID 缺失，无法写 seedance）
-    const skipped = successImages.filter((img) => !img.assetId || !img.assetKey);
-    console.log('[handleCheckComplete] successImages=', successImages.length, 'valid=', validImages.length, 'skipped=', skipped.length, {
-      valid: validImages.map((v) => ({ type: (v as any).imageType, assetKey: v.assetKey, assetId: v.assetId, imageUrl: v.imageUrl, characterId: v.characterId })),
-      skipped: skipped.map((v) => ({ type: (v as any).imageType, assetKey: v.assetKey, assetId: v.assetId, imageUrl: v.imageUrl, characterId: v.characterId })),
-    });
-    if (validImages.length === 0) return;
-
-    const state = useWorkflowStore.getState();
-    const projectId = state.currentProjectId || window.__shotlib_current_project_id;
-    // 合规检查是 Seedance 专属：按当前模型 provider 取厂商 helper 构造 data patch
-    const provider = videoModels.find((m) => m.id === episode.model)?.provider;
-    const helpers = getComplianceHelpers(provider);
-
-    // 1. 持久化：写入 image_asset 行 data.seedance（通用 patch 接口，厂商 key 由 helper 构造）
-    if (projectId && helpers) {
-      for (const v of validImages) {
-        try {
-          const patch = helpers.buildCompliancePatch({
-            assetId: v.assetId!,
-            isCompliant: true,
-            groupId: v.groupId,
-            url: v.url,
-          });
-          const res = await localApi.patchImageAssetData(projectId, v.assetKey!, patch);
-          console.log('[handleCheckComplete] patchImageAssetData', v.assetKey, '-> updated=', (res as any)?.data?.updated, res);
-        } catch (e) {
-          console.warn('[EpisodeCard] patchImageAssetData 失败:', v.assetKey, e);
-        }
-      }
-    }
-
-    // 2. 合规状态已写入 image_asset.data（缓存已由 patchImageAssetData 自动更新），
-    // 触发 UI 重渲染，订阅 imageComplianceVersion 的组件将从缓存读取最新合规状态
-    useWorkflowStore.getState().bumpImageComplianceVersion();
-  };
-
-  // 合规检查确认后：构建 passThrough assetIdMap（imageUrl → 火山 assetId）并触发生成视频
-  const handleComplianceConfirm = async (
-    assetIdMap: Map<string, string>,
-    _complianceDetails?: any[],
-  ) => {
-    console.log('[EpisodeCard] handleComplianceConfirm called with assetIdMap:', assetIdMap?.size);
-
-    // passThrough = 本次检查结果（dialog assetIdMap）∪ 历史已合规图片（从缓存读取）
-    const { characters: updatedCharacters } = useWorkflowStore.getState();
-    const passThroughMap = new Map<string, string>(assetIdMap || []);
-    if (episode.videoGenerationMode === 'first_last_frame') {
-      // 首尾帧模式：从缓存读首尾帧合规 assetId 补充
-      const frameList = [
-        { assetId: episode.firstFrameImageAssetId, imageUrl: episode.firstFrameImageUrl },
-        { assetId: episode.lastFrameImageAssetId, imageUrl: episode.lastFrameImageUrl },
-      ];
-      for (const f of frameList) {
-        if (!f.assetId || !f.imageUrl) continue;
-        const imgData = localApi.getCachedImageData(f.assetId);
-        const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-        if (compliance?.assetId && !passThroughMap.has(f.imageUrl)) {
-          passThroughMap.set(f.imageUrl, compliance.assetId);
-        }
-      }
-    } else {
-      for (const char of updatedCharacters) {
-        const allImages = [
-          ...(char.avatarImages || []),
-          ...(char.multiViewImages || []),
-          ...(char.fullBodyImages || []),
-        ];
-        for (const img of allImages) {
-          // 从缓存读取合规状态，取厂商合规 assetId
-          const imgData = img.assetId ? localApi.getCachedImageData(img.assetId) : undefined;
-          const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-          if (compliance?.assetId && img.imageUrl && !passThroughMap.has(img.imageUrl)) {
-            passThroughMap.set(img.imageUrl, compliance.assetId);
-          }
-        }
-      }
-      // 衍生片段尾帧图：从 shot.referenceImageAssetId 缓存读合规 assetId，
-      // 供 buildUniversalReferenceRequest 收集尾帧图时换为 asset://
-      for (const s of episode.shots || []) {
-        if (!s.useReferenceAsFirstFrame || !s.referenceImageUrl || !s.referenceImageAssetId) continue;
-        const imgData = localApi.getCachedImageData(s.referenceImageAssetId);
-        const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-        if (compliance?.assetId && !passThroughMap.has(s.referenceImageUrl)) {
-          passThroughMap.set(s.referenceImageUrl, compliance.assetId);
-        }
-      }
-      // 分镜参考附件图：历史已合规的（assetKey 缓存有合规 assetId）并入 passThroughMap，
-      // 本次 dialog 新检查的已由 assetIdMap 带入
-      for (const ref of usedShotRefImages) {
-        if (!ref.assetKey || passThroughMap.has(ref.imageUrl)) continue;
-        const imgData = localApi.getCachedImageData(ref.assetKey);
-        const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-        if (compliance?.assetId) {
-          passThroughMap.set(ref.imageUrl, compliance.assetId);
-        }
-      }
-    }
-
-    // 调用 generateEpisodeVideo 并传入 passThrough assetIdMap
-    await generateEpisodeVideo(episode.id, passThroughMap);
-
-    // 关闭合规检查对话框
-    setComplianceDialogOpen(false);
   };
 
   // 继续生成（超时重试）：优先使用 videoTaskId 轮询，若无则查找任务队列继续 Bull 轮询
@@ -945,63 +786,6 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
       title={previewTitle}
     />
 
-    {/* 视频合规检查对话框 */}
-    <VideoComplianceDialog
-      open={complianceDialogOpen}
-      onClose={() => setComplianceDialogOpen(false)}
-      onConfirm={handleComplianceConfirm}
-      onCheckComplete={handleCheckComplete}
-      characters={
-        episode.videoGenerationMode === 'first_last_frame'
-          ? []
-          : filterCharacterPortraitsByEpisode(characters, currentEpisodeNumber ?? 1).map((char) => ({
-              ...char,
-              avatarImages: char.avatarImages,
-              multiViewImages: char.multiViewImages,
-              fullBodyImages: char.fullBodyImages,
-            }))
-      }
-      scenes={
-        episode.videoGenerationMode === 'first_last_frame'
-          ? undefined
-          : scenes
-              .filter((s) => s.isDerived)
-              .map((s) => ({
-                id: s.id,
-                name: s.name,
-                imageUrls: s.imageUrls,
-                imageAssetIds: s.imageAssetIds,
-              }))
-      }
-      frameImages={
-        episode.videoGenerationMode === 'first_last_frame'
-          ? [
-              { imageUrl: episode.firstFrameImageUrl, assetKey: episode.firstFrameImageAssetId, imageName: '首帧' },
-              { imageUrl: episode.lastFrameImageUrl, assetKey: episode.lastFrameImageAssetId, imageName: '尾帧' },
-            ].filter(
-              (f): f is { imageUrl: string; assetKey: string; imageName: string } =>
-                !!f.imageUrl && !!f.assetKey,
-            )
-          : undefined
-      }
-      episodeId={episode.id}
-      shotRefImages={
-        episode.videoGenerationMode === 'first_last_frame' ? undefined : usedShotRefImages
-      }
-      shotPrompts={
-        episode.videoGenerationMode === 'first_last_frame'
-          ? [
-              episode.firstFramePrompt,
-              episode.lastFramePrompt,
-              episode.firstLastFrameVideoPrompt,
-              episode.videoPrompt,
-            ].filter((p): p is string => !!p)
-          : [
-              ...(episode.shots?.map(s => s.prompt) || []),
-              episode.videoPrompt,
-            ].filter((p): p is string => !!p)
-      }
-    />
     </>
   );
 };

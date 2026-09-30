@@ -17,7 +17,6 @@ import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { Image as ImageIcon, ChevronLeft, ChevronRight, Sparkles, ZoomIn, Upload, Bookmark, Trash2 } from 'lucide-react';
 import type { Prop } from '../../types';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
-import { useProjectStore } from '../../stores/projectStore';
 import { useState, useMemo } from 'react';
 import { uploadFile } from '@/shared/utils/upload';
 import { createLocalAsset } from '@/shared/api/userMaterialApi';
@@ -34,7 +33,7 @@ interface PropCardProps {
 }
 
 export const PropCard: React.FC<PropCardProps> = ({ prop }) => {
-  const { updateProp, generatePropImages, imageModels, currentProjectId, sceneImageAspectRatio, activePropIds, currentEpisodeNumber } = useWorkflowStore();
+  const { updateProp, generatePropImages, imageModels, currentProjectId, activePropIds, currentEpisodeNumber } = useWorkflowStore();
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [propUploadDialogOpen, setPropUploadDialogOpen] = useState(false);
@@ -74,20 +73,8 @@ export const PropCard: React.FC<PropCardProps> = ({ prop }) => {
     setPreviewOpen(true);
   };
 
-  const projectAspectRatio = useProjectStore((s) => {
-    const project = s.projects.find((p) => p.id === s.currentProjectId);
-    return project?.aspectRatio || '16:9';
-  });
-  // 与场景图一致：env 下发优先，回退项目比例
-  const aspectRatio = sceneImageAspectRatio || projectAspectRatio;
-  const aspectClass =
-    aspectRatio === '9:16'
-      ? 'aspect-[9/16]'
-      : aspectRatio === '21:9'
-      ? 'aspect-[21/9]'
-      : aspectRatio === '1:1'
-      ? 'aspect-square'
-      : 'aspect-video';
+  // 道具图显示固定 16:9(与生成比例保持一致,不随项目比例变化)
+  const aspectClass = 'aspect-video';
 
   const handleFieldChange = (field: keyof Prop, value: string) => {
     updateProp(prop.id, { [field]: value });

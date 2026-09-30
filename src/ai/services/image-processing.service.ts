@@ -22,7 +22,42 @@
  */
 import { modelSDK } from './model-sdk';
 import { imageRepo } from '@/storage/imageRepo';
+import { fetchRemoteBlob, blobToDataUrl, compressDataUrl } from '@/ai/core/media';
+import { uploadImageAssetToOss } from './oss-upload.service';
+import { settingsRepo } from '@/storage/settingsRepo';
+import { useLogStore } from '@/shared/stores/logStore';
 import type { UnifiedModelRequest } from '@/ai/core/types';
+
+/**
+ * 规范化发往厂商的参考图:
+ * - data:/http(s):原样(厂商可直接使用)
+ * - blob:(本地 objectURL,刷新后 hydrate 会把 state 里的 URL 还原成这种):
+ *   1. 反查 assetId → 已上传 OSS 的持久 URL(请求体小,厂商直接拉取)
+ *   2. 反查不到则读本地 Blob 转 base64 data URL(超 4MB 自动压缩)
+ * 不规范化时火山等厂商会报 "invalid url specified"。
+ */
+async function normalizeReferenceImage(projectId: string | undefined, url: string): Promise<string> {
+  if (!url || url.startsWith('data:') || /^https?:\/\//.test(url)) return url;
+  if (!url.startsWith('blob:')) return url;
+
+  if (projectId) {
+    const assetId = imageRepo.findAssetIdByObjectUrl(url);
+    if (assetId) {
+      const record = await imageRepo.get(projectId, assetId);
+      const ossUrl = record?.data?.ossUrl;
+      if (typeof ossUrl === 'string' && /^https?:\/\//.test(ossUrl)) return ossUrl;
+    }
+  }
+
+  // 兜底:本地 Blob → data URL(压缩控制请求体)
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    return await compressDataUrl(await blobToDataUrl(blob));
+  } catch {
+    return url;
+  }
+}
 
 /** 业务语义图片请求(与前端 buildXxxRequestBody 产出的 data 形状一致) */
 export interface ImageProcessingRequest {
@@ -82,14 +117,13 @@ function dataUrlToBlob(dataUrl: string): Blob | null {
   }
 }
 
-/** 远程 URL → Blob;失败返回 null(CORS 等场景,由调用方降级用原 URL) */
+/** 远程 URL → Blob;失败返回 null(由调用方降级用原 URL) */
 async function urlToBlob(url: string): Promise<Blob | null> {
   if (url.startsWith('data:')) return dataUrlToBlob(url);
   if (!/^https?:\/\//.test(url)) return null;
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-    return await resp.blob();
+    // fetchRemoteBlob:直连优先,厂商对象存储 CORS 拦截时自动经代理重试
+    return await fetchRemoteBlob(url);
   } catch {
     return null;
   }
@@ -120,15 +154,19 @@ function mapOperation(type: string): 'generate' | 'edit' | 'variation' | 'upscal
 export async function processImageRequest(request: ImageProcessingRequest): Promise<ImageProcessingResponse> {
   const { modelId, type, data, parameters } = request;
 
+  // 参考图规范化(blob: 本地引用 → OSS URL / data URL),避免厂商 "invalid url"
+  const rawRefs = data.referenceImages || (data.referenceImage ? [data.referenceImage] : undefined);
+  const normalizedRefs = rawRefs
+    ? await Promise.all(rawRefs.map((u) => normalizeReferenceImage(request.projectId, u)))
+    : undefined;
+
   const sdkRequest: UnifiedModelRequest = {
     modelId,
     taskType: 'image',
     operation: mapOperation(type),
     input: {
       text: data.prompt,
-      imageUrls:
-        data.referenceImages ||
-        (data.referenceImage ? [data.referenceImage] : undefined),
+      imageUrls: normalizedRefs,
     },
     parameters: {
       ...parameters,
@@ -156,8 +194,25 @@ export async function processImageRequest(request: ImageProcessingRequest): Prom
   const assetIds: string[] = [];
   const canPersist = !!request.projectId && !request.preview;
 
+  // OSS 状态一次性检查并入日志(未配置仅提示一次,不随图片数刷屏)
+  const { oss } = await settingsRepo.get();
+  const ossEnabled = !!oss?.bucket && !!oss.accessKeyId && !!oss.accessKeySecret;
+  if (canPersist) {
+    useLogStore.getState().addLog({
+      level: ossEnabled ? 'info' : 'warning',
+      source: 'oss',
+      message: ossEnabled
+        ? `OSS 已启用(${oss!.bucket}),生成的图片将立即上传`
+        : 'OSS 未配置或配置不完整,图片仅存浏览器本地(厂商 URL 会过期);请在设置页或 CLI 配置后刷新页面',
+    });
+  }
+
   for (const url of allUrls) {
     const blob = await urlToBlob(url);
+    if (canPersist && !blob) {
+      // 落库失败意味着刷新后该图无法从 imageRepo 恢复(角色图剥 URL 后必丢)
+      console.warn('[processImageRequest] 图片 blob 落库失败,该图将无法在刷新后恢复(检查代理/网络):', url.slice(0, 120));
+    }
     if (canPersist && blob) {
       const assetId = crypto.randomUUID();
       await imageRepo.putBlob(request.projectId!, assetId, blob, {
@@ -166,9 +221,41 @@ export async function processImageRequest(request: ImageProcessingRequest): Prom
         remoteUrl: url.startsWith('http') ? url : undefined,
         metadata: { prompt: data.prompt, type },
       });
-      const record = await imageRepo.get(request.projectId!, assetId);
-      const localUrl = record ? await imageRepo.ensureUrl(assetId, record) : undefined;
-      images.push(localUrl || url);
+
+      // OSS 持久化:配置了 OSS 时立即上传,业务数据引用持久公网 URL——
+      // 厂商产物 URL 有过期时限(TOS 24h 等),后续视频生成以图片 URL 作参考图会失效。
+      // 注意顺序:先上传并写入 data.ossUrl,之后 ensureUrl 才会解析出 OSS 地址
+      // (若先 ensureUrl 会生成 blob: objectURL 并缓存,后续解析永远命中 blob)
+      let persistUrl = url;
+      if (ossEnabled) {
+        try {
+          const ossUrl = await uploadImageAssetToOss(
+            blob,
+            request.projectId!,
+            request.assetType || 'generated_image',
+            assetId,
+          );
+          if (ossUrl) {
+            persistUrl = ossUrl;
+            await imageRepo.patchData(request.projectId!, assetId, { ossUrl });
+            useLogStore.getState().addLog({
+              level: 'success',
+              source: 'oss',
+              url: ossUrl,
+              message: `图片已上传 OSS: ${ossUrl.slice(0, 120)}`,
+            });
+          }
+        } catch (e) {
+          useLogStore.getState().addLog({
+            level: 'error',
+            source: 'oss',
+            error: e instanceof Error ? e.message : String(e),
+            message: `OSS 上传失败,降级为本地 blob URL(刷新后仅本地可见,远程引用会过期): ${(e as Error).message.slice(0, 150)}`,
+          });
+        }
+      }
+
+      images.push(persistUrl);
       assetIds.push(assetId);
     } else {
       images.push(url);

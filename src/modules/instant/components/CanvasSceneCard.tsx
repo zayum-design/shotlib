@@ -186,7 +186,8 @@ export const CanvasSceneCard: React.FC<CanvasSceneCardProps> = ({
   onDismissVideoError,
   onApplyReviewChanges,
 }) => {
-  const is9x16 = currentProjectAspectRatio === '9:16';
+  // 场景卡显示固定 16:9(与生成比例一致):不再按项目比例切换竖版
+  const is9x16 = false;
 
   // 场景选择弹窗状态
   const [presetModalOpen, setPresetModalOpen] = useState(false);

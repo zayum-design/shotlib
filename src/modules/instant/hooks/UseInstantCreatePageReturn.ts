@@ -249,12 +249,6 @@ export interface UseInstantCreatePageReturn {
   setVideoPreviewOpen: (v: boolean) => void;
   videoPreviewData: any;
   videoPreviewItemId: string | null;
-  // Compliance
-  complianceDialogOpen: boolean;
-  setComplianceDialogOpen: (v: boolean) => void;
-  complianceItemId: string;
-  handleComplyAndGenerate: (assetIdMap: Map<string, string>) => Promise<void>;
-  handleCheckComplete: (successImages: Array<{ characterId?: string; imageUrl: string; assetId?: string }>) => Promise<void>;
   handleGenerateSceneVideo: (itemId: string) => Promise<void>;
   handleRetrySceneVideo: (itemId: string) => Promise<void>;
   executeGenerateSceneVideo: (

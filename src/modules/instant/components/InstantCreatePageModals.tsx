@@ -14,7 +14,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Modal, Steps, Button, Input, Select, Switch, Tooltip, Spin } from 'antd';
+import { Modal, Steps, Button, Input, Select, Switch, Spin } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   X,
@@ -23,7 +23,6 @@ import {
   ChevronRight,
   RefreshCw,
   Trash2,
-  Check,
   Dices,
   Sparkles,
   Music,
@@ -32,8 +31,6 @@ import {
   Plus,
   Bookmark,
 } from 'lucide-react';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 import { CreateCharacterDialog } from './CreateCharacterDialog';
 import { CreateSceneDialog } from './CreateSceneDialog';
 import { ShotEditorModal } from './ShotEditorModal';
@@ -44,7 +41,6 @@ import { PortraitDialogModal } from './modals/PortraitDialogModal';
 import { PreviewRequestModal } from '@/shared/components/ui/PreviewRequestModal';
 import { ImagePreviewModal } from '@/shared/components/ui/ImagePreviewModal';
 import { SceneImagesGridModal } from '@/shared/components/ui/SceneImagesGridModal';
-import { VideoComplianceDialog } from '@/shared/components/ui/VideoComplianceDialog';
 import VisualPromptEditor from '@/shared/components/ui/VisualPromptEditor';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { buildUrl } from '@/shared/config/api';
@@ -268,28 +264,6 @@ export const InstantCreatePageModals: React.FC<InstantCreatePageModalsProps> = (
                       alt={page.avatarPreviewChar.name}
                       className="w-64 h-64 rounded-full object-cover border-4 border-bg-tertiary"
                     />
-                    {/* 检查所有类型的图片是否已合规 */}
-                    {(page.avatarPreviewChar.avatarImages?.some((img) => {
-                      if (!img?.assetId) return false;
-                      const d = localApi.getCachedImageData(img.assetId);
-                      return d ? !!readAnyCompliance(d)?.isCompliant : false;
-                    }) ||
-                      page.avatarPreviewChar.portraitImages?.some((img) => {
-                        if (!img?.assetId) return false;
-                        const d = localApi.getCachedImageData(img.assetId);
-                        return d ? !!readAnyCompliance(d)?.isCompliant : false;
-                      }) ||
-                      page.avatarPreviewChar.fullBodyImages?.some((img) => {
-                        if (!img?.assetId) return false;
-                        const d = localApi.getCachedImageData(img.assetId);
-                        return d ? !!readAnyCompliance(d)?.isCompliant : false;
-                      })) && (
-                      <Tooltip title="已通过合规检查">
-                        <div className="absolute top-2 right-2 z-10 w-6 h-6 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                          <Check size={14} strokeWidth={3} />
-                        </div>
-                      </Tooltip>
-                    )}
                   </div>
                 ) : (
                   <div className="w-64 h-64 rounded-full bg-bg-tertiary flex items-center justify-center">
@@ -415,7 +389,7 @@ export const InstantCreatePageModals: React.FC<InstantCreatePageModalsProps> = (
               isOpen={page.sceneGridModalOpen}
               images={page.sceneGridImages}
               title={page.sceneGridTitle}
-              aspectRatio={page.currentProject?.aspectRatio}
+              aspectRatio="16:9"
               onClose={() => page.setSceneGridModalOpen(false)}
             />
 
@@ -430,34 +404,6 @@ export const InstantCreatePageModals: React.FC<InstantCreatePageModalsProps> = (
               onClose={() => setPreviewOpen(false)}
             />
 
-            {/* 视频合规检查对话框 */}
-            <VideoComplianceDialog
-              open={page.complianceDialogOpen}
-              onClose={() => page.setComplianceDialogOpen(false)}
-              onConfirm={page.handleComplyAndGenerate}
-              onCheckComplete={page.handleCheckComplete}
-              characters={(() => {
-                const item = page.activeSegment?.canvasItems.find((i) => i.id === page.complianceItemId);
-                return item?.videoGenerationMode === 'first_last_frame' ? [] : (page.characters as any);
-              })()}
-              frameImages={(() => {
-                const item = page.activeSegment?.canvasItems.find((i) => i.id === page.complianceItemId);
-                if (item?.videoGenerationMode !== 'first_last_frame') return undefined;
-                return [
-                  { imageUrl: item.firstFrameImageUrl, assetKey: item.firstFrameImageAssetId, imageName: '首帧' },
-                  { imageUrl: item.lastFrameImageUrl, assetKey: item.lastFrameImageAssetId, imageName: '尾帧' },
-                ].filter((f): f is { imageUrl: string; assetKey: string; imageName: string } => !!f.imageUrl && !!f.assetKey);
-              })()}
-              episodeId={page.currentProject?.id || page.projectId || ''}
-              shotPrompts={(() => {
-                const item = page.activeSegment?.canvasItems.find((i) => i.id === page.complianceItemId);
-                if (item?.videoGenerationMode === 'first_last_frame') {
-                  return [item.firstFramePrompt, item.lastFramePrompt, item.firstLastFrameVideoPrompt, item.customPrompt]
-                    .filter((p): p is string => !!p);
-                }
-                return item?.shots?.map((s) => s.prompt) || [];
-              })()}
-            />
     </>
   );
 };

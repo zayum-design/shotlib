@@ -14,7 +14,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Modal, Button, Steps, Input, Select, Spin, Tooltip } from 'antd';
-import { Shuffle, UserPlus, User, Sparkles, RefreshCw, Scan, Eye, ChevronLeft, ChevronRight, Trash2, Plus, ZoomIn, Upload, Check, Bookmark, Image as ImageIcon } from 'lucide-react';
+import { Shuffle, UserPlus, User, Sparkles, RefreshCw, Scan, Eye, ChevronLeft, ChevronRight, Trash2, Plus, ZoomIn, Upload, Image as ImageIcon } from 'lucide-react';
 import { motion } from 'framer-motion';
 import type { CharacterImage } from '@/shared/types';
 import type { ModelConfig } from '@/shared/types/index';
@@ -24,18 +24,7 @@ import { generatePortraitPromptApi } from '@/modules/workflow/api/sceneApi';
 import { pollJobStatus } from '@/modules/workflow/api/aiJobApi';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { ImagePreviewModal } from '@/shared/components/ui/ImagePreviewModal';
-import { createCharacterComplianceAsset } from '@/shared/api/userMaterialApi';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '@/modules/workflow/providers/compliance-factory';
 import { message } from '@/shared/utils/message';
-
-// 通过缓存读取图片的合规状态（避免直接读取已被剥离的 isCompliant 字段）
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 import {
   CHARACTER_STEP_OPTIONS,
   PERSONALITY_BY_GENDER_AGE,
@@ -198,7 +187,6 @@ export const CreateCharacterDialog: React.FC<CreateCharacterDialogProps> = ({
   };
 
   // 素材库相关
-  const [isAddingToLibrary, setIsAddingToLibrary] = useState(false);
 
   // 通用图片预览
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -643,45 +631,6 @@ export const CreateCharacterDialog: React.FC<CreateCharacterDialogProps> = ({
     onCancel();
   };
 
-  // 添加到素材库
-  const handleAddToAssetLibrary = async () => {
-    if (!avatar) return;
-    setIsAddingToLibrary(true);
-    try {
-      // 构造与 creator_instant_assets.data 一致的元数据（character_avatar 行）
-      const data = { ...draftCharacter };
-      delete (data as any).id;
-      delete (data as any).avatar;
-      delete (data as any).portraitImages;
-      delete (data as any).fullBodyImages;
-
-      const res = await createCharacterComplianceAsset(
-        avatar,
-        avatar,
-        data,
-        name.trim() || '角色',
-      );
-      if (res.success && res.data) {
-        // 同步更新角色头像的素材库关联状态
-        const updatedAvatarImages = [...(avatarImages || [])];
-        if (updatedAvatarImages[0]) {
-          updatedAvatarImages[0] = {
-            ...updatedAvatarImages[0],
-            userAssetId: res.data.id,
-            assetType: res.data.assetType,
-          };
-          setAvatarImages(updatedAvatarImages);
-        }
-        message.success('已添加到个人素材库');
-      } else {
-        message.error(res.message || '添加失败');
-      }
-    } catch (err: any) {
-      message.error(err?.message || '添加失败，请重试');
-    } finally {
-      setIsAddingToLibrary(false);
-    }
-  };
 
   const allSelected = selections.every((s) => s.trim() !== '');
   const canGenerateAvatar = name.trim() && allSelected;
@@ -918,14 +867,6 @@ export const CreateCharacterDialog: React.FC<CreateCharacterDialogProps> = ({
               className="relative w-24 h-24 rounded-lg overflow-hidden bg-bg-tertiary flex-shrink-0 group cursor-pointer"
               onClick={() => currentAvatarUrl && openImagePreview([currentAvatarUrl], `${name} - 头像`)}
             >
-              {/* 右上角合规标识 */}
-              {currentAvatarUrl && getIsCompliant(avatarImages?.[0]) && (
-                <Tooltip title="已通过合规检查">
-                  <div className="absolute top-1 right-1 z-20 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                    <Check size={8} strokeWidth={4} />
-                  </div>
-                </Tooltip>
-              )}
               {currentAvatarUrl ? (
                 <>
                   <img
@@ -933,24 +874,8 @@ export const CreateCharacterDialog: React.FC<CreateCharacterDialogProps> = ({
                     alt={name}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <ZoomIn size={20} className="text-white" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAddToAssetLibrary();
-                      }}
-                      disabled={isAddingToLibrary}
-                      className="flex items-center gap-1 px-2 py-1 rounded-full text-white text-[10px] pointer-events-auto transition-colors bg-white/20 hover:bg-white/40"
-                      title="添加到我的个人素材库"
-                    >
-                      {isAddingToLibrary ? (
-                        <Spin size="small" />
-                      ) : (
-                        <Bookmark size={10} />
-                      )}
-                      添加
-                    </button>
                   </div>
                 </>
               ) : (
