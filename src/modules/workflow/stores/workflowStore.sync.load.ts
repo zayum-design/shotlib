@@ -20,7 +20,7 @@
  */
 import { localApi } from '@/storage';
 import { userStorage } from '@/shared/utils/userScopedStorage';
-import { PROJECT_DATA_FIELDS, EPISODE_DATA_FIELDS } from './workflowStore.storage';
+import { PROJECT_DATA_FIELDS, EPISODE_DATA_FIELDS, stripDeadBlobUrls } from './workflowStore.storage';
 
 /** 加载结果：结构化的项目/分集数据 */
 export interface WorkflowLoadResult {
@@ -112,7 +112,7 @@ export async function hydrateCharacterImages(projectId: string, characters: any[
     if (!resolveRes.success || !resolveRes.data) return characters;
 
     // resolveImageAssets 已自动填充 localApi 的 imageDataCache，
-    // 合规状态通过 getCachedImageData + readAnyCompliance 按需读取，不再写入 CharacterImage。
+    // 图片运行时数据按需从缓存读取，不再写入 CharacterImage。
     const assetMap = resolveRes.data as Record<string, { url?: string; data?: Record<string, any> }>;
     return characters.map((char) => {
       const fillUrl = (img: any) => {
@@ -249,11 +249,14 @@ export async function loadWorkflowFromServer(
           // 复位持久化的瞬时生成标志（防止历史污染数据导致永久 loading）
           const cleaned = cleanAssetLoadingStates(rawCharacters, rawScenes);
           // 道具同理复位 isGenerating（与场景共用同一瞬时标志语义）
-          const cleanedProps = (rawProps || []).map((p) => ({ ...p, isGenerating: false }));
+          // 场景/道具同时清洗 blob: 死链（历史数据可能把 objectURL 持久化了），
+          // 置空保序，展示层由 imageAssetIds resolve 还原
+          const cleanedProps = (rawProps || []).map((p) => ({ ...stripDeadBlobUrls(p), isGenerating: false }));
+          const cleanedScenes = cleaned.scenes.map((s) => stripDeadBlobUrls(s));
           // 按保存时写入的 orderIndex 还原分解时的顺序（后端按 created_at/id 排序，
           // created_at 相同或复用旧角色时顺序会乱）；无 orderIndex 的历史数据保持原列表顺序
           characters = sortBySavedOrder(cleaned.characters);
-          scenes = sortBySavedOrder(cleaned.scenes);
+          scenes = sortBySavedOrder(cleanedScenes);
           props = sortBySavedOrder(cleanedProps);
 
           if (characters.length > 0) {
@@ -375,13 +378,13 @@ export async function loadWorkflowFromServer(
       let { cleaned, needRecovery } = cleanEpisodesAndGetRecovery(episodeData.episodes);
       episodesNeedRecovery = needRecovery;
 
-      // 收集首尾帧图 assetId，resolve 填充 imageDataCache（合规状态恢复）+ 还原 URL（运行时，不持久化）
+      // 收集首尾帧图 assetId，resolve 填充 imageDataCache（图片缓存恢复）+ 还原 URL（运行时，不持久化）
       const frameAssetIds = new Set<string>();
       for (const ep of cleaned) {
         if (ep?.firstFrameImageAssetId) frameAssetIds.add(ep.firstFrameImageAssetId);
         if (ep?.lastFrameImageAssetId) frameAssetIds.add(ep.lastFrameImageAssetId);
         // 分镜参考附件的 image_asset 行（assetKey）一并 resolve 填充缓存，
-        // 刷新页面后合规状态可从缓存恢复（附件 URL 存在 assetId 字段，无需还原）
+        // 刷新页面后图片数据可从缓存恢复（附件 URL 存在 assetId 字段，无需还原）
         for (const s of ep?.shots || []) {
           for (const a of s?.referenceAssets || []) {
             if (a?.assetKey) frameAssetIds.add(a.assetKey);

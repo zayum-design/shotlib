@@ -51,7 +51,7 @@ const collectImageAssetIds = (
   for (const scene of scenes) {
     if (scene.assetId) ids.add(scene.assetId);
   }
-  // 首尾帧图（asset_type=frame_image）的 asset_key，用于加载 data.seedance 合规状态
+  // 首尾帧图（asset_type=frame_image）的 asset_key，用于加载图片数据
   for (const seg of segments) {
     for (const item of seg.canvasItems || []) {
       if (item.firstFrameImageAssetId) ids.add(item.firstFrameImageAssetId);
@@ -126,7 +126,7 @@ export function useInstantDataLoader({
       );
       console.log('[loadInstantData] loaded pending video tasks:', pendingItems.length, pendingItems);
 
-      // 预加载图片资产 data（含 seedance 合规状态）到缓存，避免刷新后合规勾丢失
+      // 预加载图片资产 data 到缓存，避免刷新后图片解析失败
       const assetIds = collectImageAssetIds(
         loadedChars,
         loadedScenes,

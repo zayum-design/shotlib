@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Copyright 2026 zayum-design
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,7 +13,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#!/usr/bin/env node
 /**
  * shotlib 可选轻量代理(Node 版,零依赖)
  *
@@ -114,12 +114,15 @@ const server = http.createServer(async (req, res) => {
     });
 
     // 透传响应头(剔除压缩与逐跳头,长度由 Node 重算)
+    // 注意:上游的 access-control-* 头必须剔除 —— undici 返回小写头名,
+    // 与 CORS_HEADERS 的大写键在 writeHead 中会变成两个同名头(如 '*, http://origin'),
+    // 浏览器按不区分大小写合并后判定重复值直接拒掉(CORS: multiple values)
     const respHeaders = {};
     upstream.headers.forEach((value, name) => {
       const lower = name.toLowerCase();
-      if (!['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(lower)) {
-        respHeaders[name] = value;
-      }
+      if (['content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(lower)) return;
+      if (lower.startsWith('access-control-')) return;
+      respHeaders[name] = value;
     });
     res.writeHead(upstream.status, { ...CORS_HEADERS, ...respHeaders });
     res.end(Buffer.from(await upstream.arrayBuffer()));

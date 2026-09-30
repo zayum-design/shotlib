@@ -153,7 +153,7 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
           />
           {reviewMode === 'review' ? (
             <p className="text-sm text-text-muted">
-              根据故事梗概对当前剧本进行合理性二次校验审阅，输出审阅报告（梗概一致性、剧情逻辑、人物一致性、节奏、合规等）。
+              根据故事梗概对当前剧本进行合理性二次校验审阅，输出审阅报告（梗概一致性、剧情逻辑、人物一致性、节奏等）。
             </p>
           ) : (
             <div className="space-y-2">

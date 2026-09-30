@@ -31,7 +31,7 @@ import { useWorkflowImport } from '@/modules/workflow/hooks/useWorkflowImport';
 import { usePreviewRequest } from '@/shared/hooks/usePreviewRequest';
 import { PreviewRequestModal } from '@/shared/components/ui/PreviewRequestModal';
 import { useProjectStore } from '@/shared/stores/projectStore';
-import { useApiPreviewStore } from '@/shared/stores/apiPreviewStore';
+import { useApiPreviewStore, syncApiPreviewFromSettings } from '@/shared/stores/apiPreviewStore';
 
 import { FileText, Film, Layers, Clapperboard, Combine } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -297,6 +297,11 @@ export function WorkflowPage() {
   useEffect(() => {
     setWorkflowPreviewRequestCallback(previewRequest);
   }, [previewRequest]);
+
+  // 同步 settingsRepo 中的提交模型预览开关(默认 false)
+  useEffect(() => {
+    void syncApiPreviewFromSettings();
+  }, []);
 
   // 加载模型列表
   useEffect(() => {

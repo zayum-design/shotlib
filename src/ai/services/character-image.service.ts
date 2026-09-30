@@ -169,14 +169,25 @@ export async function generateViews(
   };
 }
 
-/** 重新生成单个全身照(模板 REGENERATE 的 variation=N) */
+/** 重新生成单个全身照/形象照
+ * - template='view'(默认,多视图):REGENERATE 模板的 variation=N
+ * - template='portrait'(形象照):CHARACTER_PORTRAIT 形象照模板 + 该图保存的提示词
+ *   (形象照此前误用四视图设定图模板,产出与用户输入的形象描述完全无关)
+ */
 export async function regenerateView(
   index: number,
   model: string,
-  context: CharacterImageContext & { aspectRatio?: string },
+  context: CharacterImageContext & { aspectRatio?: string; imagePrompt?: string; template?: 'view' | 'portrait' },
 ): Promise<{ imageUrl: string; imageAssetId?: string; index: number }> {
-  const prompt = (prompts['REGENERATE'] || '').replace('{{variation}}', String(index + 1));
-  console.log(`[CharacterImageService] 重新生成全身照提示词: ${prompt}`);
+  const basePrompt =
+    context.template === 'portrait'
+      ? stripTitleLines(portraitPromptRaw)
+      : (prompts['REGENERATE'] || '').replace('{{variation}}', String(index + 1));
+  // 用户提示词(该形象照生成时保存的 prompt/角色描述)必须参与生成,否则重生成结果与角色无关
+  const prompt = context.imagePrompt
+    ? `${basePrompt}，${context.imagePrompt}${IMAGE_USER_PRIORITY_NOTE}`
+    : basePrompt;
+  console.log(`[CharacterImageService] 重新生成${context.template === 'portrait' ? '形象照' : '全身照'}提示词: ${prompt}`);
 
   const result = await run({
     modelId: model,
@@ -244,6 +255,8 @@ export async function generatePortrait(
       modelId: model,
       prompt: finalPrompt,
       negativePrompt: stripTitleLines(portraitNegativeRaw),
+      // aspectRatio 显式传递,厂商按比例选档;width/height 作为不支持比例的模型的回退
+      aspectRatio,
       width,
       height,
       numImages: count,

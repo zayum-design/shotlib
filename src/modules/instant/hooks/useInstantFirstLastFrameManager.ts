@@ -19,7 +19,6 @@ import type { InstantSegment, InstantScene, InstantCharacter, CanvasItem } from 
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
 import * as workflowApi from '@/modules/workflow/api/workflowApi';
 import { persistInstantData } from '@/modules/instant/utils/instantStorageUtils';
-import { localApi } from '@/storage';
 import {
   parseFramePrompt,
   wrapPromptWithTags,
@@ -260,16 +259,6 @@ export function useInstantFirstLastFrameManager({
         return;
       }
 
-      // 重新生成首帧：清除旧 image_asset 的合规标记，避免新图误用旧合规 assetId（参考 workflowStore.frame.ts:105-116）
-      if (item.firstFrameImageAssetId && projectId) {
-        const { buildSeedanceCompliance } = await import(
-          '@/modules/workflow/providers/volcengine/compliance'
-        );
-        localApi
-          .patchImageAssetData(projectId, item.firstFrameImageAssetId, buildSeedanceCompliance({ assetId: '', isCompliant: false }))
-          .catch((e: any) => console.warn('[generateFirstFrame] 清除旧首帧合规标记失败:', e?.message));
-      }
-
       setSegments((prev) => {
         const next = prev.map((s) => {
           if (s.id !== activeSegmentId) return s;
@@ -450,16 +439,6 @@ export function useInstantFirstLastFrameManager({
       if (!model) {
         message.warning('请选择一个图片模型');
         return;
-      }
-
-      // 重新生成尾帧：清除旧 image_asset 的合规标记，避免新图误用旧合规 assetId（参考 workflowStore.frame.ts:105-116）
-      if (item.lastFrameImageAssetId && projectId) {
-        const { buildSeedanceCompliance } = await import(
-          '@/modules/workflow/providers/volcengine/compliance'
-        );
-        localApi
-          .patchImageAssetData(projectId, item.lastFrameImageAssetId, buildSeedanceCompliance({ assetId: '', isCompliant: false }))
-          .catch((e: any) => console.warn('[generateLastFrame] 清除旧尾帧合规标记失败:', e?.message));
       }
 
       setSegments((prev) => {

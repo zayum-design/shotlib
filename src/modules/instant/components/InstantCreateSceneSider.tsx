@@ -45,13 +45,8 @@ export const InstantCreateSceneSider: React.FC<InstantCreateSceneSiderProps> = (
         const scene = scenes.find((s) => s.id === item.refId);
         if (!scene) return null;
         const isActive = item.id === selectedSceneItemId;
-        const aspectRatio = currentProjectAspectRatio || '16:9';
-        const sceneImgClass =
-          aspectRatio === '9:16'
-            ? 'w-8 aspect-[9/16]'
-            : aspectRatio === '21:9'
-              ? 'w-16 aspect-[21/9]'
-              : 'w-12 aspect-[16/9]';
+        // 场景缩略图显示固定 16:9(与生成比例一致)
+        const sceneImgClass = 'w-12 aspect-[16/9]';
         return (
           <div
             key={item.id}

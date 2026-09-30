@@ -192,11 +192,6 @@ export function useInstantCreatePageReturnValues({
   handlePreviewConfirm,
   showApiPreview,
   video,
-  complianceDialogOpen,
-  setComplianceDialogOpen,
-  complianceItemId,
-  handleComplyAndGenerate,
-  handleCheckComplete,
   handleGenerateSceneVideo,
   handleRetrySceneVideo,
   executeGenerateSceneVideo,
@@ -394,11 +389,6 @@ export function useInstantCreatePageReturnValues({
   handlePreviewConfirm: () => void;
   showApiPreview: (title: string, previewPromise: Promise<unknown>, requestData: unknown, onExecute: () => void) => void;
   video: any;
-  complianceDialogOpen: boolean;
-  setComplianceDialogOpen: (v: boolean) => void;
-  complianceItemId: string;
-  handleComplyAndGenerate: (assetIdMap: Map<string, string>) => Promise<void>;
-  handleCheckComplete: (successImages: Array<{ characterId?: string; imageUrl: string; assetId?: string }>) => Promise<void>;
   handleGenerateSceneVideo: (itemId: string) => Promise<void>;
   handleRetrySceneVideo: (itemId: string) => Promise<void>;
   executeGenerateSceneVideo: (itemId: string, requestData: any) => Promise<void>;
@@ -596,12 +586,6 @@ export function useInstantCreatePageReturnValues({
     handlePreviewConfirm,
     showApiPreview,
     ...video,
-    // Compliance
-    complianceDialogOpen,
-    setComplianceDialogOpen,
-    complianceItemId,
-    handleComplyAndGenerate,
-    handleCheckComplete,
     handleGenerateSceneVideo,
     handleRetrySceneVideo,
     executeGenerateSceneVideo,

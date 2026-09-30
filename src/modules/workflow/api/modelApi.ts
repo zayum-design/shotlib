@@ -49,7 +49,6 @@ export interface ModelInfo {
     seed?: boolean;
     negative_prompt?: boolean;
     prompt_extend?: boolean;
-    requires_compliance?: boolean;
     [key: string]: any;
   };
   priceType?: string;

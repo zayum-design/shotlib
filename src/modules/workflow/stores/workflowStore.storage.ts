@@ -133,7 +133,7 @@ export function stripBase64Fields(obj: any): any {
 
 /**
  * 剔除角色对象中的图片 URL，仅保留 assetId（image_asset UUID）等元数据。
- * 合规状态由 image_asset.data[compliance_key] 管理，运行时通过缓存读取，不持久化到 character 行。
+ * 图片 URL 运行时由 hydrate 从 image_asset 还原，不持久化到 character 行。
  */
 export function stripCharacterImageUrls(character: any): any {
   if (!character || typeof character !== 'object') return character;
@@ -141,9 +141,8 @@ export function stripCharacterImageUrls(character: any): any {
     if (!Array.isArray(images)) return images;
     return images.map((img) => {
       if (!img || typeof img !== 'object') return img;
-      // 剔除 imageUrl（由 hydrate 从 image_asset 还原）和 seedance（运行时缓存）
-      // 合规状态由 image_asset.data[compliance_key] 管理，不存入 character 行
-      // isGenerating 为会话内瞬时状态，持久化会导致服务器重启/会话中断后加载永久 loading
+      // 剔除 imageUrl（由 hydrate 从 image_asset 还原）、seedance（历史遗留字段）与
+      // isGenerating（会话内瞬时状态，持久化会导致加载永久 loading）
       const { imageUrl, seedance, isGenerating, ...rest } = img;
       void imageUrl; void seedance; void isGenerating;
       return rest;
@@ -156,6 +155,23 @@ export function stripCharacterImageUrls(character: any): any {
     avatarImages: stripImages(character.avatarImages),
     fullBodyImages: stripImages(character.fullBodyImages),
     multiViewImages: stripImages(character.multiViewImages),
+  };
+}
+
+/**
+ * 清洗 objectURL（blob:）死链:objectURL 仅当前会话有效,持久化后再读必然失效。
+ * 场景/道具的 imageUrls 与 imageAssetIds 按下标一一对应,因此只置空不清除,保住下标对位;
+ * 展示层 getUrl(assetId) 优先级高于 imageUrl,空串不参与回退。
+ */
+export function stripDeadBlobUrls(sceneOrProp: any): any {
+  if (!sceneOrProp || typeof sceneOrProp !== 'object') return sceneOrProp;
+  const urls = sceneOrProp.imageUrls;
+  if (!Array.isArray(urls) || !urls.some((u) => typeof u === 'string' && u.startsWith('blob:'))) {
+    return sceneOrProp;
+  }
+  return {
+    ...sceneOrProp,
+    imageUrls: urls.map((u: string) => (typeof u === 'string' && u.startsWith('blob:') ? '' : u)),
   };
 }
 
@@ -275,10 +291,11 @@ export async function loadWorkflowFromCache(
     for (const key of PROJECT_DATA_FIELDS) {
       if (projectAssets[key] !== undefined) result[key] = projectAssets[key];
     }
-    // 缓存中可能还存有 characters/scenes/props（旧格式）
+    // 缓存中的 characters/scenes/props（秒开用，服务端数据到后覆盖）；
+    // scenes/props 清洗 blob: 死链（objectURL 跨刷新失效），由 resolver 按 assetId 还原
     if (projectAssets.characters) result.characters = projectAssets.characters;
-    if (projectAssets.scenes) result.scenes = projectAssets.scenes;
-    if (projectAssets.props) result.props = projectAssets.props;
+    if (projectAssets.scenes) result.scenes = projectAssets.scenes.map(stripDeadBlobUrls);
+    if (projectAssets.props) result.props = projectAssets.props.map(stripDeadBlobUrls);
     console.log('[ModelPersist] 从缓存恢复模型选择:', {
       characters: (projectAssets.characters || []).map((c: any) => `${c.name}:${c.model}`),
       scenes: (projectAssets.scenes || []).map((s: any) => `${s.name}:${s.model}`),

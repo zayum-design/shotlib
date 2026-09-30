@@ -16,7 +16,6 @@ import { Button, Modal, Tabs } from 'antd';
 import { Film, Music } from 'lucide-react';
 import React, { useState } from 'react';
 import { ImagePreview } from './ImagePreview';
-import { localApi } from '@/storage';
 
 interface PreviewRequestModalProps {
   open: boolean;
@@ -76,7 +75,7 @@ const ASSET_ID_FIELD_MAP: Array<{ keys: string[]; type: RefMaterial['type']; lab
 const isHttpUrl = (v: unknown): v is string =>
   typeof v === 'string' && /^https?:\/\//.test(v);
 
-/** 厂商合规资产 URL（asset://asset-xxx），需反查为真实图片 URL 才能展示 */
+/** 历史遗留的厂商资产 URL（asset://asset-xxx），需反查为真实图片 URL 才能展示 */
 const isAssetUrl = (v: unknown): v is string =>
   typeof v === 'string' && v.startsWith('asset://');
 
@@ -85,7 +84,7 @@ const VALID_TYPES = new Set(['image', 'video', 'audio']);
 /**
  * 递归扫描本地参数 JSON，收集参考素材（URL 直连 + assetId 解析两种形态）。
  * 按 url 去重，保留首次出现的标签。
- * asset:// 合规资产 URL 依次经 resolveAssetUrl（调用方）与合规缓存反查解析。
+ * asset:// 历史资产 URL 依次经 resolveAssetUrl（调用方）解析。
  */
 function collectRefMaterials(
   node: any,
@@ -97,14 +96,11 @@ function collectRefMaterials(
   if (!node || depth > 12) return out;
   const push = (type: RefMaterial['type'], url: string | undefined, label: string) => {
     if (!url) return;
-    // asset:// 合规资产 URL：先走调用方解析器，再从 image_asset.data 合规缓存反查
+    // asset:// 历史资产 URL：走调用方解析器还原为可展示的 http URL
     let finalUrl = url;
     if (isAssetUrl(finalUrl)) {
       const assetId = finalUrl.slice('asset://'.length);
-      finalUrl =
-        resolveAssetUrl?.(assetId) ||
-        localApi.resolveComplianceAssetUrl(finalUrl) ||
-        '';
+      finalUrl = resolveAssetUrl?.(assetId) || '';
     }
     if (!isHttpUrl(finalUrl) || seen.has(finalUrl)) return;
     seen.add(finalUrl);
@@ -133,7 +129,7 @@ function collectRefMaterials(
   }
 
   for (const [key, value] of Object.entries(node)) {
-    // 形态3：URL 字段（字符串或字符串数组，含 asset:// 合规资产 URL）
+    // 形态3：URL 字段（字符串或字符串数组）
     const urlField = URL_FIELD_MAP.find((f) => f.keys.includes(key));
     if (urlField) {
       const values = Array.isArray(value) ? value : [value];

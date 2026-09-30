@@ -199,9 +199,6 @@ export interface WorkflowState {
   // 音频资产
   audioAssets: AudioAsset[];
 
-  // 合规缓存版本：+1 触发订阅组件重渲染，从 localApi.getCachedImageData 读取最新合规状态
-  imageComplianceVersion: number;
-
   // 音色模型
   voiceModel: string;
   voiceModels: ModelConfig[];
@@ -280,7 +277,7 @@ export interface WorkflowState {
   insertEpisodeAfter: (afterEpisodeId: string, episode: Episode) => string;
   removeEpisode: (episodeId: string) => void;
   deriveEpisodeFromVideo: (episodeId: string) => Promise<{ newEpisodeId: string } | null>;
-  generateEpisodeVideo: (episodeId: string, assetIdMap?: Map<string, string>) => Promise<void>;
+  generateEpisodeVideo: (episodeId: string) => Promise<void>;
   getEpisodeVideoPreviewData: (episodeId: string) => { endpoint: string; body: any } | null;
   pollVideoTaskStatus: (episodeId: string, taskId: string, taskQueueTaskId?: string) => Promise<void>;
   /** [Step5] 合并当前分集已生成的片段视频为完整短片 */
@@ -310,9 +307,6 @@ export interface WorkflowState {
   addAudioAsset: (asset: AudioAsset) => void;
   removeAudioAsset: (id: string) => void;
   setAudioAssets: (assets: AudioAsset[]) => void;
-
-  /** 合规缓存版本 +1，触发订阅组件重渲染 */
-  bumpImageComplianceVersion: () => void;
 }
 
 export const useWorkflowStore = create<WorkflowState>()(
@@ -376,7 +370,6 @@ export const useWorkflowStore = create<WorkflowState>()(
     activeSceneIds: [],
     activePropIds: [],
     audioAssets: [],
-    imageComplianceVersion: 0,
 
     setCurrentProjectId: (currentProjectId) => set({ currentProjectId }),
 
@@ -566,8 +559,6 @@ export const useWorkflowStore = create<WorkflowState>()(
     },
 
     setAudioAssets: (assets) => set({ audioAssets: assets }),
-
-    bumpImageComplianceVersion: () => set((s) => ({ imageComplianceVersion: s.imageComplianceVersion + 1 })),
 
     setCurrentStep: (step) => set((state) => ({ currentStep: Math.max(state.currentStep, step) })),
 

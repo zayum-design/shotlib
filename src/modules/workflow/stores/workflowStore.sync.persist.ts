@@ -23,6 +23,7 @@ import {
   saveProjectAssetsToStorage,
   saveEpisodeDataToStorage,
   saveScriptToStorage,
+  stripCharacterImageUrls,
 } from './workflowStore.storage';
 import type { WorkflowState } from './workflowStore';
 
@@ -130,7 +131,16 @@ export async function persistWorkflowState(
   if (isDramaMode) {
     // 关键修复：characters/scenes 是项目级资产（episode_number=0），
     // 统一写入项目级 localStorage key，不再按分集存储。
-    saveProjectAssetsToStorage(projectId, assets).catch(() => {});
+    // 补齐 characters/scenes/props：loadWorkflowFromCache 从项目级 key 读取三者做秒开，
+    // 之前漏写导致缓存秒开永远无资产数据；characters 剥离 imageUrl（objectURL 跨刷新失效）
+    // 只留 assetId，由 hydrate/resolver 从 imageRepo 还原。
+    const assetsWithRows = {
+      ...assets,
+      characters: (state.characters || []).map(stripCharacterImageUrls),
+      scenes: state.scenes,
+      props: state.props,
+    };
+    saveProjectAssetsToStorage(projectId, assetsWithRows).catch(() => {});
   } else {
     saveProjectAssetsToStorage(projectId, assets).catch(() => {});
   }

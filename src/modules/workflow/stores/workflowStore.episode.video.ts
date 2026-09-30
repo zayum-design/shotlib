@@ -30,7 +30,6 @@ import { message } from '@/shared/utils/message';
 import { buildActingPrefix, buildUniversalReferenceRequest, convertPromptToHtml, withVideoPromptSuffix } from './workflowStore.episode.utils';
 import { saveToServer } from './workflowStore.sync';
 import { getVideoPromptFormatter } from '../providers/video-prompt-factory';
-import { getComplianceHelpers, readAnyCompliance } from '../providers/compliance-factory';
 import { localApi } from '@/storage';
 import { calcSimulatedProgress, VIDEO_PROGRESS_TICK, VIDEO_PROGRESS_START } from '@/shared/utils/videoProgress';
 
@@ -99,7 +98,7 @@ async function createEpisodeVideoAssetRows(
 }
 
 export interface EpisodeVideoSliceActions {
-  generateEpisodeVideo: (episodeId: string, assetIdMap?: Map<string, string>) => Promise<void>;
+  generateEpisodeVideo: (episodeId: string) => Promise<void>;
   getEpisodeVideoPreviewData: (episodeId: string) => { endpoint: string; body: any } | null;
   pollVideoTaskStatus: (episodeId: string, taskId: string, taskQueueTaskId?: string) => Promise<void>;
   checkPendingVideoTasks: () => void;
@@ -170,59 +169,6 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
       let previewRequestData: { endpoint: string; body: any } | null = null;
 
       const videoModels = get().videoModels;
-      const currentModelConfig = videoModels.find((m) => m.id === episode.model);
-      // 合规判定与资产 URL 构造均由厂商 helper 提供（Seedance 专属，不在此硬编码标志/scheme）
-      const complianceHelpers = getComplianceHelpers(currentModelConfig?.provider);
-      const needsCompliance = complianceHelpers?.isComplianceRequired(currentModelConfig) ?? false;
-
-      // 构建统一的 assetIdMap：imageUrl → 厂商合规 assetId（从 image_asset.data 缓存读取），
-      // 仅含角色头像/形象照/多视图。场景图未经过合规检查（无合规 assetId），不加入此 map，
-      // 保持原始 URL 提交。
-      const assetIdMap = new Map<string, string>();
-      if (needsCompliance) {
-        for (const char of characters) {
-          for (const img of [
-            ...(char.avatarImages || []),
-            ...(char.multiViewImages || []),
-            ...(char.fullBodyImages || []),
-          ]) {
-            const imgData = img.assetId ? localApi.getCachedImageData(img.assetId) : undefined;
-            const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-            if (compliance?.assetId && img.imageUrl && !assetIdMap.has(img.imageUrl)) {
-              assetIdMap.set(img.imageUrl, compliance.assetId);
-            }
-          }
-        }
-        // 首尾帧图：同样从缓存读合规 assetId，与 doGenerate 的 effectiveAssetIdMap 保持一致，
-        // 确保预览 dialog 展示的 firstFrameUrl/lastFrameUrl 与实际提交一致（已替换为厂商 assetId）
-        for (const f of [
-          { assetId: episode.firstFrameImageAssetId, imageUrl: episode.firstFrameImageUrl },
-          { assetId: episode.lastFrameImageAssetId, imageUrl: episode.lastFrameImageUrl },
-        ]) {
-          if (!f.assetId || !f.imageUrl) continue;
-          const imgData = localApi.getCachedImageData(f.assetId);
-          const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-          if (compliance?.assetId && !assetIdMap.has(f.imageUrl)) {
-            assetIdMap.set(f.imageUrl, compliance.assetId);
-          }
-        }
-        // 分镜参考附件图：与 doGenerate 一致，从 assetKey 缓存补 url→合规 assetId
-        for (const s of episode.shots || []) {
-          for (const a of s.referenceAssets || []) {
-            if (a.type !== 'image' || !a.assetKey || !a.assetId) continue;
-            const imgData = localApi.getCachedImageData(a.assetKey);
-            const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-            if (compliance?.assetId && !assetIdMap.has(a.assetId)) {
-              assetIdMap.set(a.assetId, compliance.assetId);
-            }
-          }
-        }
-      }
-
-      const replaceUrlWithAssetId = (url: string | undefined): string | undefined => {
-        if (!needsCompliance || !url || !complianceHelpers) return url;
-        return complianceHelpers.resolveReferenceUrl(url, undefined, assetIdMap);
-      };
 
       if (generationMode === 'first_last_frame') {
         let rawPrompt = episode.firstLastFrameVideoPrompt || episode.videoPrompt || '';
@@ -241,30 +187,30 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
         const canUseAudio = hasGenerateAudio;
 
         if (episode.firstFrameImageUrl && canUseLastFrame) {
-          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-frames`, body: { videoPrompt, firstFrameUrl: replaceUrlWithAssetId(episode.firstFrameImageUrl), lastFrameUrl: replaceUrlWithAssetId(episode.lastFrameImageUrl), model: frameSupportedModel, generateAudio: canUseAudio, ratio: getCurrentProjectAspectRatio(), duration: videoDuration } };
+          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-frames`, body: { videoPrompt, firstFrameUrl: episode.firstFrameImageUrl, lastFrameUrl: episode.lastFrameImageUrl, model: frameSupportedModel, generateAudio: canUseAudio, ratio: getCurrentProjectAspectRatio(), duration: videoDuration } };
         } else if (episode.firstFrameImageUrl) {
-          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-frames`, body: { videoPrompt, firstFrameUrl: replaceUrlWithAssetId(episode.firstFrameImageUrl), model: frameSupportedModel, generateAudio: canUseAudio, ratio: getCurrentProjectAspectRatio(), duration: videoDuration } };
+          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-frames`, body: { videoPrompt, firstFrameUrl: episode.firstFrameImageUrl, model: frameSupportedModel, generateAudio: canUseAudio, ratio: getCurrentProjectAspectRatio(), duration: videoDuration } };
         } else {
           previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video`, body: { videoPrompt, model: frameSupportedModel, duration: videoDuration } };
         }
       } else {
         const currentEpisodeNumber = get().currentEpisodeNumber ?? 1;
         const episodeCharacters = filterCharacterPortraitsByEpisode(characters, currentEpisodeNumber);
-        const refData = buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, assetIdMap, characters, get().episodeMaxDuration || 15, get().props);
+        const refData = buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, characters, get().episodeMaxDuration || 15, get().props);
         if (refData.referenceImages.length === 0 && refData.referenceAudios.length === 0 && refData.referenceVideos.length === 0) {
           previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video`, body: { videoPrompt: refData.processedPrompt, model: episode.model, ratio: getCurrentProjectAspectRatio(), duration: refData.totalDuration } };
         } else {
-          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-references`, body: { videoPrompt: refData.processedPrompt, referenceImageUrls: refData.referenceImages.map(replaceUrlWithAssetId), referenceVideos: refData.referenceVideos.length > 0 ? refData.referenceVideos : undefined, referenceAudios: refData.referenceAudios.length > 0 ? refData.referenceAudios : undefined, referenceAudioMap: Object.keys(refData.referenceAudioMap).length > 0 ? refData.referenceAudioMap : undefined, model: refData.referenceModel, ratio: getCurrentProjectAspectRatio(), duration: refData.totalDuration } };
+          previewRequestData = { endpoint: `/api/creator/episode/${episodeId}/video-with-references`, body: { videoPrompt: refData.processedPrompt, referenceImageUrls: refData.referenceImages, referenceVideos: refData.referenceVideos.length > 0 ? refData.referenceVideos : undefined, referenceAudios: refData.referenceAudios.length > 0 ? refData.referenceAudios : undefined, referenceAudioMap: Object.keys(refData.referenceAudioMap).length > 0 ? refData.referenceAudioMap : undefined, model: refData.referenceModel, ratio: getCurrentProjectAspectRatio(), duration: refData.totalDuration } };
         }
       }
 
       return previewRequestData;
     },
 
-    generateEpisodeVideo: async (episodeId: string, assetIdMap?: Map<string, string>) => {
+    generateEpisodeVideo: async (episodeId: string) => {
       const { episodes, characters, scenes } = get();
       const episode = episodes.find((e) => e.id === episodeId);
-      console.log(`[generateEpisodeVideo] ENTRY episodeId=${episodeId}, found=${!!episode}, mode=${episode?.videoGenerationMode}, model=${episode?.model}, shots=${episode?.shots?.length ?? 0}, assetIdMapSize=${assetIdMap?.size ?? 0}`);
+      console.log(`[generateEpisodeVideo] ENTRY episodeId=${episodeId}, found=${!!episode}, mode=${episode?.videoGenerationMode}, model=${episode?.model}, shots=${episode?.shots?.length ?? 0}`);
       if (!episode) {
         console.error('[generateEpisodeVideo] episode not found, returning silently');
         return;
@@ -285,82 +231,13 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
           episode.model = fallback.id;
         }
       }
-      const currentModelConfig = videoModels.find((m) => m.id === episode.model);
-      // 合规判定与资产 URL 构造均由厂商 helper 提供（Seedance 专属，不在此硬编码标志/scheme）
-      const complianceHelpers = getComplianceHelpers(currentModelConfig?.provider);
-      const needsCompliance = complianceHelpers?.isComplianceRequired(currentModelConfig) ?? false;
-
-      // 如果外部未传入 assetIdMap，从缓存自动构建 fallback map
-      // （imageUrl → 厂商合规 assetId，从 image_asset.data 缓存读取）
-      let effectiveAssetIdMap = assetIdMap;
-      if (needsCompliance && (!effectiveAssetIdMap || effectiveAssetIdMap.size === 0)) {
-        const { characters: allChars } = get();
-        effectiveAssetIdMap = new Map<string, string>();
-        let totalImgs = 0;
-        let withAssetId = 0;
-        let cachedImgs = 0;
-        let complianceImgs = 0;
-        for (const char of allChars) {
-          for (const img of [
-            ...(char.avatarImages || []),
-            ...(char.multiViewImages || []),
-            ...(char.fullBodyImages || []),
-          ]) {
-            totalImgs++;
-            if (img.assetId) withAssetId++;
-            const imgData = img.assetId ? localApi.getCachedImageData(img.assetId) : undefined;
-            if (imgData) cachedImgs++;
-            const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-            if (compliance?.assetId) complianceImgs++;
-            if (compliance?.assetId && img.imageUrl && !effectiveAssetIdMap.has(img.imageUrl)) {
-              effectiveAssetIdMap.set(img.imageUrl, compliance.assetId);
-            }
-          }
-        }
-        // 首尾帧图：同样从缓存读合规 assetId，供首尾帧模式 firstFrameUrl/lastFrameUrl 替换为 asset://
-        for (const f of [
-          { assetId: episode.firstFrameImageAssetId, imageUrl: episode.firstFrameImageUrl },
-          { assetId: episode.lastFrameImageAssetId, imageUrl: episode.lastFrameImageUrl },
-        ]) {
-          if (!f.assetId || !f.imageUrl) continue;
-          const imgData = localApi.getCachedImageData(f.assetId);
-          const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-          if (compliance?.assetId && !effectiveAssetIdMap.has(f.imageUrl)) {
-            effectiveAssetIdMap.set(f.imageUrl, compliance.assetId);
-          }
-        }
-        // 分镜参考附件图（!<ref type="image">）：assetKey → 缓存合规 assetId，
-        // 供 replaceRefAssetTags 把附件 URL 替换为 asset://（合规过一次后再次生成无需重开 dialog）
-        for (const s of episode.shots || []) {
-          for (const a of s.referenceAssets || []) {
-            if (a.type !== 'image' || !a.assetKey || !a.assetId) continue;
-            const imgData = localApi.getCachedImageData(a.assetKey);
-            const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-            if (compliance?.assetId && !effectiveAssetIdMap.has(a.assetId)) {
-              effectiveAssetIdMap.set(a.assetId, compliance.assetId);
-            }
-          }
-        }
-        console.log(`[generateEpisodeVideo] 缓存诊断: totalImgs=${totalImgs}, withAssetId=${withAssetId}, cachedImgs=${cachedImgs}, complianceImgs=${complianceImgs}, mapSize=${effectiveAssetIdMap.size}`);
-        if (effectiveAssetIdMap.size > 0) {
-          console.log(`[generateEpisodeVideo] 自动构建 assetIdMap: ${effectiveAssetIdMap.size} 个条目`);
-        }
-      }
-
-      const replaceUrlWithAssetId = (url: string): string => {
-        if (!needsCompliance || !url || !effectiveAssetIdMap || effectiveAssetIdMap.size === 0 || !complianceHelpers) return url;
-        return complianceHelpers.resolveReferenceUrl(url, undefined, effectiveAssetIdMap);
-      };
-
       const generationMode = episode.videoGenerationMode || 'reference_image';
       const previewRequestData = get().getEpisodeVideoPreviewData(episodeId);
 
-      const buildUniversalReferenceRequestLocal = (passThroughAssetIdMap?: Map<string, string>) => {
+      const buildUniversalReferenceRequestLocal = () => {
         const currentEpisodeNumber = get().currentEpisodeNumber ?? 1;
         const episodeCharacters = filterCharacterPortraitsByEpisode(characters, currentEpisodeNumber);
-        // 优先使用传入的 assetIdMap，其次使用自动构建的 effectiveAssetIdMap
-        const finalAssetIdMap = passThroughAssetIdMap || effectiveAssetIdMap;
-        return buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, finalAssetIdMap, characters, get().episodeMaxDuration || 15, get().props);
+        return buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, characters, get().episodeMaxDuration || 15, get().props);
       };
 
       const doGenerate = async () => {
@@ -450,11 +327,12 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
             const canUseLastFrame = episode.lastFrameImageUrl && hasLastFrame;
             const canUseAudio = hasGenerateAudio;
 
-            console.log(`[generateEpisodeVideo/doGenerate] try block ENTER, generationMode=${generationMode}, episode.model=${episode.model}, needsCompliance=${needsCompliance}`);
+            console.log(`[generateEpisodeVideo/doGenerate] try block ENTER, generationMode=${generationMode}, episode.model=${episode.model}`);
 
             if (episode.firstFrameImageUrl && canUseLastFrame) {
-              const firstFrameUrl = replaceUrlWithAssetId(episode.firstFrameImageUrl);
-              const lastFrameUrl = replaceUrlWithAssetId(episode.lastFrameImageUrl!);
+              // 首尾帧参考图直接使用图片自身 URL 提交
+              const firstFrameUrl = episode.firstFrameImageUrl;
+              const lastFrameUrl = episode.lastFrameImageUrl!;
               response = await workflowApi.generateEpisodeVideoWithFramesApi(
                 episodeId,
                 videoPrompt,
@@ -469,7 +347,7 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
                 VIDEO_GENERATION_API_TIMEOUT,
               );
             } else if (episode.firstFrameImageUrl) {
-              const firstFrameUrl = replaceUrlWithAssetId(episode.firstFrameImageUrl);
+              const firstFrameUrl = episode.firstFrameImageUrl;
               response = await workflowApi.generateEpisodeVideoWithFramesApi(
                 episodeId,
                 videoPrompt,
@@ -495,7 +373,7 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
               );
             }
           } else {
-            const refData = buildUniversalReferenceRequestLocal(assetIdMap);
+            const refData = buildUniversalReferenceRequestLocal();
             console.log(`[generateEpisodeVideo/doGenerate] buildUniversalReferenceRequest done, referenceModel=${refData.referenceModel}, originalModel=${refData.originalModel}, refImages=${refData.referenceImages.length}, refAudios=${refData.referenceAudios.length}, totalDuration=${refData.totalDuration}`);
             console.log(`[generateEpisodeVideo/doGenerate] processedPrompt(first 200):`, (refData.processedPrompt || '').substring(0, 200));
 
@@ -513,13 +391,7 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
               );
               console.log(`[generateEpisodeVideo/doGenerate] generateEpisodeVideoApi response:`, response);
             } else {
-              console.log('[generateEpisodeVideo] assetIdMap size:', assetIdMap?.size);
-              if (assetIdMap) {
-                console.log('[generateEpisodeVideo] assetIdMap keys:', Array.from(assetIdMap.keys()));
-                console.log('[generateEpisodeVideo] refData.referenceImages:', refData.referenceImages);
-              }
-              const referenceImageUrls = refData.referenceImages.map(replaceUrlWithAssetId);
-              console.log('[generateEpisodeVideo] referenceImageUrls after replace:', referenceImageUrls);
+              const referenceImageUrls = refData.referenceImages;
               console.log(`[generateEpisodeVideo/doGenerate] calling generateEpisodeVideoWithReferencesApi, refImageCount=${referenceImageUrls.length}, model=${refData.referenceModel}, ratio=${getCurrentProjectAspectRatio()}, duration=${refData.totalDuration}`);
               response = await workflowApi.generateEpisodeVideoWithReferencesApi(
                 episodeId,

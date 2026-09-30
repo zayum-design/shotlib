@@ -31,6 +31,7 @@ export interface LogEntry {
   error?: unknown; // 错误信息
   message: string; // 简短描述
   duration?: number; // 请求耗时（毫秒）
+  pollCount?: number; // 轮询合并计数(同 URL GET 连续调用时累计)
 }
 
 interface LogState {
@@ -67,6 +68,14 @@ export const useLogStore = create<LogState>((set, _get) => ({
       }
       return { logs: newLogs };
     });
+
+    // 原始日志落盘:上报本地部署服务的 POST /logs(serve.mjs / vite dev 写入 logs/web/日期/小时.log)
+    // 失败静默(非本地部署或服务未启动时 404/网络错),不阻塞 UI
+    void fetch('/logs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEntry),
+    }).catch(() => {});
   },
 
   clearLogs: () => {

@@ -86,8 +86,7 @@ function collectImageAssetIds(data: any): string[] {
 }
 
 /**
- * 根据解析结果回填 imageUrl / imageUrls，同时把 image_asset.data 中的合规数据（seedance）
- * 附加到图片对象上，使导出的 JSON 携带合规状态，导入时可写入新项目的 image_asset.data。
+ * 根据解析结果回填 imageUrl / imageUrls。
  */
 function fillImageUrls(
   data: any,
@@ -100,14 +99,6 @@ function fillImageUrls(
     // 回填显示 URL（缺失时）
     if ((!item.imageUrl || item.imageUrl === '') && resolved.url) {
       item.imageUrl = resolved.url;
-    }
-    // 回填合规数据（image_asset.data 中的 seedance 等），供导入时写入新项目
-    if (resolved.data && !item.seedance) {
-      // 仅写入非空 data，避免覆盖已有值
-      const seedance = resolved.data.seedance;
-      if (seedance && typeof seedance === 'object') {
-        item.seedance = seedance;
-      }
     }
   };
 
@@ -182,19 +173,6 @@ function fillImageUrls(
       }
     }
   }
-}
-
-/**
- * 剥离导出数据中的合规运行时字段。
- * 合规状态由 image_asset.data[compliance_key] 管理，不属于 character 行数据，
- * 导出时需转为 seedance 格式供导入时写入 image_asset.data。
- * 保留 assetId（image_asset UUID）与 imageUrl（解析后的可访问 URL），
- * 后端 asset processor 仍可据此下载图片。
- */
-function stripComplianceFromExport(data: any) {
-  // CharacterImage 已无 complianceAssetId / isCompliant 字段，
-  // 此处保留函数签名，后续可按需剥离其他运行时字段
-  void data;
 }
 
 /**
@@ -505,8 +483,6 @@ export function useWorkflowSync(projectId: string | undefined) {
         exportedAt: Date.now(),
       };
 
-      // 关键修复：导出/同步前剥离合规运行时字段（仅存 image_asset.data.seedance，不下沉到 character 行）
-      stripComplianceFromExport(projectData);
       // 关键修复：导出/同步前把 assetId 解析为 URL（resolveImageAssets 会将 /api/workspace/ 本地路径代理到 OSS）
       await hydrateWorkflowImageUrls(projectId, projectData);
       // 兜底：对残余的 /api/workspace/ 相对地址规范化（正常情况此时不应再有本地路径）

@@ -23,7 +23,7 @@
 import { localApi } from '@/storage';
 import { userStorage } from '@/shared/utils/userScopedStorage';
 import { saveGuard, SaveRiskLevel } from '../utils/workflowSaveGuard';
-import { extractProjectData, extractEpisodeData, stripCharacterImageUrls } from './workflowStore.storage';
+import { extractProjectData, extractEpisodeData, stripCharacterImageUrls, stripDeadBlobUrls } from './workflowStore.storage';
 import {
   persistWorkflowState,
   hasValidWorkflowData,
@@ -213,7 +213,8 @@ export async function saveCharacterSceneAssets(state: WorkflowState): Promise<bo
       category: 'scene',
       asset_key: s.id,
       episode_number: 0,
-      data: { ...s, orderIndex: index },
+      // objectURL(blob:) 跨刷新失效,真相源只存可恢复数据(assetId + 远程 URL)
+      data: { ...stripDeadBlobUrls(s), orderIndex: index },
     }));
     // 道具同为项目级资产（episode_number=0），随角色/场景一起落库
     const propItems = (state.props || []).map((p, index) => ({
@@ -221,7 +222,7 @@ export async function saveCharacterSceneAssets(state: WorkflowState): Promise<bo
       category: 'prop',
       asset_key: p.id,
       episode_number: 0,
-      data: { ...p, orderIndex: index },
+      data: { ...stripDeadBlobUrls(p), orderIndex: index },
     }));
 
     const result = await saveWithRetry('角色/场景资产', () =>

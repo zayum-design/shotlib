@@ -57,7 +57,7 @@ export function useInstantSceneImageGeneration({
                 ? {
                     ...s,
                     isGenerating: false,
-                    // 场景行 asset_key=sceneId，合规检查据此定位写入 data.seedance
+                    // 场景行 asset_key=sceneId
                     assetId: scene.id,
                     imageUrls,
                     imageUrl: imageUrls[0],
@@ -102,7 +102,8 @@ export function useInstantSceneImageGeneration({
       const fullPrompt = rawPrompt
         ? `${rawPrompt}。纯场景空镜，画面中不要出现任何人物、动物、角色、生物、人脸、人体、手部、车辆等具体实体，仅展示环境、空间、建筑、自然背景与氛围。`
         : '';
-      const aspectRatio = currentProjectAspectRatio || '16:9';
+      // 产品决策:场景图生成固定 16:9(与显示一致,不随项目比例变化)
+      const aspectRatio = '16:9';
       const requestData = { fullPrompt, model, aspectRatio };
 
       if (videoApiPreviewMode) {
@@ -117,7 +118,7 @@ export function useInstantSceneImageGeneration({
 
       await executeGenerateScene(scene, requestData);
     },
-    [selectedImageModel, currentProjectAspectRatio, videoApiPreviewMode, showApiPreview, executeGenerateScene]
+    [selectedImageModel, videoApiPreviewMode, showApiPreview, executeGenerateScene]
   );
 
   return {

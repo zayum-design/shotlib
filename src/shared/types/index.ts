@@ -25,7 +25,6 @@ export interface CharacterImage {
   ageVariant?: number; // 年龄变体标记（如 70 表示该图是角色70岁版本），仅头像/形象照使用
   // 生成该图片使用的模型ID（即时创作形象照使用）
   model?: string;
-  // 合规状态由 image_asset.data[requires_compliance_key] 管理，运行时通过 localApi.getCachedImageData() 读取
   // 素材库关联信息（从 creator_user_materials 选中时填充）
   userAssetId?: number; // 素材库记录ID
   assetType?: string; // 素材类型（如 character）
@@ -206,7 +205,7 @@ export interface ShotReferenceAsset {
   type: 'image' | 'video' | 'audio';
   assetId: string; // 附件 URL（!<ref> 标签、缩略图展示、按 URL 移除标签均依赖此字段）
   name?: string;
-  assetKey?: string; // image_asset 行 UUID（合规检查结果持久化到该行 data；历史数据无此字段）
+  assetKey?: string; // image_asset 行 UUID（历史数据无此字段）
 }
 
 // 分镜类型
@@ -224,7 +223,7 @@ export interface Shot {
   rawReferencePrompt?: string; // 原始分镜参考图提示词（未替换标记）
   dialogue?: string; // 分镜对白（与 prompt 中 {} 内文字一致；无对白时为空字符串）
   referenceImageUrl?: string; // 分镜参考图URL
-  referenceImageAssetId?: string; // 分镜参考图资产ID（image_asset UUID，合规模型读取合规状态用）
+  referenceImageAssetId?: string; // 分镜参考图资产ID（image_asset UUID）
   isGeneratingReferenceImage?: boolean; // 是否正在生成分镜参考图
   useReferenceAsFirstFrame?: boolean; // 是否将该分镜参考图作为起始帧参照
   referenceAssets?: ShotReferenceAsset[]; // 分镜参考附件（上传的图片/视频/音频）
@@ -354,7 +353,6 @@ export interface ModelSupports {
   reference_image?: boolean;
   reference_video?: boolean;
   reference_audio?: boolean;
-  requires_compliance?: boolean; // 是否需要资产合规检查（私域素材库）
   [key: string]: any;
 }
 

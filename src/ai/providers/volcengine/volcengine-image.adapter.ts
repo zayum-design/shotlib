@@ -221,7 +221,7 @@ export class VolcEngineImageAdapter extends BaseAdapter {
    * 尺寸预设全部来自 model.json 的 supports.size.aspect_presets(单一配置源):
    * - 有 aspectRatio:取该比例预设的默认中间档
    * - 无 aspectRatio:按 width*height 选最接近档
-   * - 预设未覆盖该比例:基于 min_pixels/max_pixels 按比例计算合规尺寸
+   * - 预设未覆盖该比例:基于 min_pixels/max_pixels 按比例计算满足要求的尺寸
    */
   private resolveRecommendedSize(
     modelId: string,
@@ -272,7 +272,7 @@ export class VolcEngineImageAdapter extends BaseAdapter {
     }
 
     // 兜底:aspect_presets 未覆盖该比例时,基于 min_pixels/max_pixels 按比例计算
-    // 合规尺寸(对齐到 16 的倍数),避免传低于 min_pixels 的小尺寸被厂商拒绝
+    // 尺寸对齐到 16 的倍数,避免低于 min_pixels 的小尺寸被厂商拒绝
     if (aspectRatio && sizeSupports?.min_pixels) {
       const parts = aspectRatio.split(':').map(Number);
       if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {

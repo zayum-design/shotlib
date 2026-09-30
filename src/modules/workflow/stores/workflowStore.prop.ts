@@ -21,7 +21,7 @@ import { Modal } from 'antd';
 import type { StoreApi } from 'zustand';
 import * as workflowApi from '../api/workflowApi';
 import { buildGeneratePropImageRequestBody, generatePropImageApi, buildPropFullPrompt, PROP_NUM_IMAGES } from '../api/propApi';
-import { getCurrentProjectAspectRatio, saveWorkflowStateToLocal } from '../utils/workflowUtils';
+import { saveWorkflowStateToLocal } from '../utils/workflowUtils';
 import { userStorage } from '@/shared/utils/userScopedStorage';
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
 import { shouldPreview, triggerPreview } from './workflowStore';
@@ -95,8 +95,8 @@ export function createPropSlice(set: SetFn, get: GetFn) {
 
       const fullPrompt = buildPropFullPrompt(prop, artStylePromptHint);
 
-      // 比例：env 下发（sceneImageAspectRatio）优先，回退项目比例
-      const aspectRatio = get().sceneImageAspectRatio || getCurrentProjectAspectRatio();
+      // 产品决策:道具图生成固定 16:9(与显示一致,不随项目比例变化)
+      const aspectRatio = '16:9';
 
       const doGenerate = async () => {
 
@@ -246,7 +246,8 @@ export function createPropSlice(set: SetFn, get: GetFn) {
       if (!prop) return;
 
       const fullPrompt = buildPropFullPrompt(prop, artStylePromptHint);
-      const aspectRatio = get().sceneImageAspectRatio || getCurrentProjectAspectRatio();
+      // 产品决策:道具图生成固定 16:9(与显示一致)
+      const aspectRatio = '16:9';
 
       const doGenerate = async () => {
 

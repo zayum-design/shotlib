@@ -134,8 +134,7 @@ export const ShotEditModal: React.FC<ShotEditModalProps> = ({
     setUploading(true);
     setUploadingType(type);
     try {
-      // 图片附件同时创建 image_asset 行（assetType=shot_reference），
-      // 合规检查结果持久化到该行 data，合规模型生成时据此替换为 asset:// 提交
+      // 图片附件同时创建 image_asset 行（assetType=shot_reference），便于后续按行管理
       const currentProjectId = useWorkflowStore.getState().currentProjectId;
       const episodeNumber = useWorkflowStore.getState().currentEpisodeNumber ?? 1;
       const canPersistAsset = type === 'image' && !!currentProjectId && currentProjectId !== 'default';
@@ -155,8 +154,8 @@ export const ShotEditModal: React.FC<ShotEditModalProps> = ({
   };
 
   /**
-   * 素材库选择的图片附件：创建 shot_reference 资产行（对齐 PropCard 素材库选图模式），
-   * 使合规检查结果可持久化；建行失败时 assetKey 留空，合规走当次 passThrough 不阻塞
+   * 素材库选择的图片附件：创建 shot_reference 资产行（对齐 PropCard 素材库选图模式）；
+   * 建行失败时 assetKey 留空，不影响使用
    */
   const addLibraryImageAsset = async (asset: UserMaterialItem, fallbackName: string) => {
     let assetKey = '';

@@ -12,7 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { getApiPreviewEnabled, syncApiPreviewFromSettings } from '@/shared/stores/apiPreviewStore';
 
 export function useInstantApiPreview() {
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -20,7 +21,17 @@ export function useInstantApiPreview() {
   const [previewData, setPreviewData] = useState<any>(null);
   const previewConfirmRef = useRef<(() => void) | null>(null);
 
+  // 初始化时从 settingsRepo 同步开关状态(默认 false)
+  useEffect(() => {
+    void syncApiPreviewFromSettings();
+  }, []);
+
   const openPreviewDialog = useCallback((title: string, data: any, onConfirm: () => void) => {
+    // 如果全局关闭了提交模型 JSON 预览，直接执行确认动作
+    if (!getApiPreviewEnabled()) {
+      onConfirm();
+      return;
+    }
     setPreviewTitle(title);
     // 如果 data 已经有 local 和 remote，直接使用（后端返回的 preview 格式）
     // 否则只展示原始数据，避免两个标签页显示相同内容

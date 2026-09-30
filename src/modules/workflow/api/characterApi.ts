@@ -105,12 +105,16 @@ export function buildRegenerateViewRequestBody(
   preview?: boolean,
   async?: boolean,
   episodeNumber?: number,
+  imagePrompt?: string,
+  template?: 'view' | 'portrait',
 ): any {
   return {
     index,
     model,
     globalPrompt,
     aspectRatio,
+    imagePrompt,
+    template,
     preview,
     async,
     projectId: getProjectId(),
@@ -240,7 +244,9 @@ export interface RegenerateViewResponse {
 }
 
 /**
- * 重新生成单个全身照(模板 REGENERATE 的 variation=N)
+ * 重新生成单个全身照/形象照
+ * - 多视图:REGENERATE 模板 variation=N
+ * - 形象照(template='portrait'):形象照模板 + 该图保存的提示词
  */
 export async function regenerateViewApi(
   _characterId: string,
@@ -251,11 +257,15 @@ export async function regenerateViewApi(
   _preview?: boolean,
   _async?: boolean,
   episodeNumber?: number,
+  imagePrompt?: string,
+  template?: 'view' | 'portrait',
 ): Promise<ApiResponse<RegenerateViewResponse>> {
   const data = await svcRegenerateView(index, model, {
     projectId: getProjectId(),
     episodeNumber,
     aspectRatio,
+    imagePrompt,
+    template,
   });
   return { success: true, data };
 }

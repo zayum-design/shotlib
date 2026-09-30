@@ -51,16 +51,10 @@ function stripProjectImageAssetIds(obj: any): any {
     const result: any = {};
     for (const [key, value] of Object.entries(obj)) {
       // 剥离图片对象顶层的 assetId（image_asset UUID，指向原项目，需在新项目重建）
-      // 但保留 seedance 内部的 assetId（火山合规 assetId，跨项目通用，导入时写入 image_asset.data）
       if (key === 'assetId' || key === 'imageAssetIds') {
         continue;
       }
-      // seedance 是合规数据对象，内部 assetId 是火山合规 ID，不递归剥离
-      if (key === 'seedance') {
-        result[key] = value;
-      } else {
-        result[key] = stripProjectImageAssetIds(value);
-      }
+      result[key] = stripProjectImageAssetIds(value);
     }
     return result;
   }
@@ -194,7 +188,7 @@ interface UseWorkflowImportOptions {
  * 导入时为角色图片补建 image_asset 行。
  *
  * 跨项目导入时旧 assetId 已被 stripProjectImageAssetIds 剥离（指向原项目），
- * 仅靠 character 行的 imageUrl 不足以让新项目的 resolveImageAssets / 合规检查工作。
+ * 仅靠 character 行的 imageUrl 不足以让新项目的 resolveImageAssets 正常工作。
  * 这里按 imageUrl 在当前项目批量新建 image_asset 行（asset_type='character_image'），
  * 并把返回的 assetId 回填到所有引用该 url 的角色图片上（master + 各分集副本）。
  */
@@ -207,7 +201,6 @@ async function ensureCharacterImageAssets(
     url: string;
     episode_number: number;
     metadata: Record<string, any>;
-    complianceData?: Record<string, any>; // 合规数据（seedance 格式）
   };
   const pending: Pending[] = [];
   const urlToRefs = new Map<string, any[]>(); // url -> 引用该 url 的所有 image 对象
@@ -218,20 +211,6 @@ async function ensureCharacterImageAssets(
     if (!url) return;
     if (!urlToRefs.has(url)) {
       urlToRefs.set(url, []);
-      // 收集合规数据：支持新格式（seedance 对象）和旧格式（complianceAssetId/isCompliant）兼容
-      let complianceData: Record<string, any> | undefined;
-      if (img.seedance) {
-        // 新格式：直接使用 seedance 对象
-        complianceData = { seedance: img.seedance };
-      } else if (img.complianceAssetId || img.isCompliant) {
-        // 旧格式兼容：complianceAssetId/isCompliant → seedance 格式
-        const seedance: Record<string, any> = {};
-        if (img.complianceAssetId) seedance.assetId = img.complianceAssetId;
-        if (img.isCompliant !== undefined) seedance.isCompliant = img.isCompliant;
-        if (Object.keys(seedance).length > 0) {
-          complianceData = { seedance };
-        }
-      }
       pending.push({
         url,
         episode_number: episodeNumber || 1,
@@ -242,7 +221,6 @@ async function ensureCharacterImageAssets(
           prompt: img.prompt ?? '',
           kind,
         },
-        complianceData,
       });
     }
     urlToRefs.get(url)!.push(img);
@@ -328,26 +306,6 @@ async function ensureCharacterImageAssets(
       });
     }
     console.log(`[ensureCharacterImageAssets] 已创建 ${urlToAssetId.size} 条 image_asset 行`);
-
-    // 写入合规数据到新项目的 image_asset.data.seedance
-    // 避免导入后需要重新进行合规检查
-    const compliancePending = pending.filter((p) => p.complianceData);
-    if (compliancePending.length > 0) {
-      let complianceCount = 0;
-      for (const p of compliancePending) {
-        const assetKey = urlToAssetId.get(p.url);
-        if (!assetKey || !p.complianceData) continue;
-        try {
-          await localApi.patchImageAssetData(projectId, assetKey, p.complianceData);
-          complianceCount++;
-        } catch (e) {
-          console.warn(`[ensureCharacterImageAssets] 写入合规数据失败: assetKey=${assetKey}`, e);
-        }
-      }
-      if (complianceCount > 0) {
-        console.log(`[ensureCharacterImageAssets] 已写入 ${complianceCount} 条合规数据`);
-      }
-    }
   } catch (e) {
     console.error('[ensureCharacterImageAssets] 异常:', e);
   }
@@ -702,7 +660,7 @@ async function applyV2ProjectData(
   });
 
   // 关键修复：跨项目导入后旧 assetId 已剥离，按 imageUrl 在当前项目新建 image_asset 行并回填 assetId，
-  // 使 resolveImageAssets / 合规检查在新项目可用（character 行同步带上 assetId）
+  // 使 resolveImageAssets 在新项目可用（character 行同步带上 assetId）
   // 但先删除该项目旧的角色/场景/image_asset 行，避免新旧 ID 不同导致 loadWorkflowFromServer 时返回重复角色
 
   // 校验项目上下文：ensureCharacterImageAssets 前确认项目未切换

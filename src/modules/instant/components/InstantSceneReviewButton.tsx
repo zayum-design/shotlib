@@ -371,7 +371,7 @@ export const InstantSceneReviewButton: React.FC<InstantSceneReviewButtonProps> =
           />
           {mode === 'review' ? (
             <p className="text-sm text-text-muted">
-              根据场次内容对场景/首帧/尾帧/分镜提示词进行合理性二次校验审阅，输出审阅报告（内容一致性、人物一致性、画面可拍性、提示词质量、合规等）。
+              根据场次内容对场景/首帧/尾帧/分镜提示词进行合理性二次校验审阅，输出审阅报告（内容一致性、人物一致性、画面可拍性、提示词质量等）。
             </p>
           ) : (
             <div className="space-y-2">

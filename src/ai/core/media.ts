@@ -20,9 +20,32 @@
  * 1. blob ↔ dataURL 互转
  * 2. 超限 dataURL 的 canvas 降采样压缩(base64 体积膨胀 ~33%,厂商多限制 10MB 请求体)
  */
+import { settingsRepo } from '@/storage';
+import { buildProxyUrl } from './client';
 
 /** 默认压缩阈值:超过 4MB 的 dataURL 触发降采样 */
 const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 拉取 http(s) 图片为 blob:直连优先,失败自动经代理重试
+ *
+ * 厂商产物(如火山方舟 TOS 对象存储签名 URL)不返回 CORS 头,浏览器直连 fetch
+ * 会被拦截;此类 URL 经部署代理(node-proxy / CF Worker)转发后即可正常拉取。
+ * 自家/CDN 图片直连成功则不消耗代理带宽。
+ */
+export async function fetchRemoteBlob(url: string): Promise<Blob> {
+  try {
+    const resp = await fetch(url);
+    if (resp.ok) return await resp.blob();
+  } catch {
+    // 直连失败(典型:CORS 拦截),尝试代理兜底
+  }
+  const { proxyUrl } = await settingsRepo.get();
+  if (!proxyUrl) throw new Error(`图片拉取失败(CORS 拦截且未配置代理): ${url.slice(0, 120)}`);
+  const resp = await fetch(buildProxyUrl(proxyUrl, url));
+  if (!resp.ok) throw new Error(`图片拉取失败: HTTP ${resp.status}`);
+  return await resp.blob();
+}
 
 /** blob → base64 data URL */
 export function blobToDataUrl(blob: Blob): Promise<string> {
@@ -48,20 +71,15 @@ export function dataUrlToBlob(dataUrl: string): Blob {
  * 拉取远程/本地 URL 图片并转为 data URL
  * - 已是 data URL 原样返回
  * - blob: URL 直接取 blob
- * - http(s): fetch 转 blob(需图片可访问;跨域失败时抛错由调用方兜底)
+ * - http(s): 直连优先,跨域失败自动经代理重试(fetchRemoteBlob)
  */
 export async function urlToDataUrl(url: string): Promise<string> {
   if (!url) return url;
   if (url.startsWith('data:')) return url;
-  let blob: Blob;
   if (url.startsWith('blob:')) {
-    blob = await (await fetch(url)).blob();
-  } else {
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`图片拉取失败: HTTP ${resp.status}`);
-    blob = await resp.blob();
+    return blobToDataUrl(await (await fetch(url)).blob());
   }
-  return blobToDataUrl(blob);
+  return blobToDataUrl(await fetchRemoteBlob(url));
 }
 
 /**

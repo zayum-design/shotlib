@@ -53,7 +53,7 @@ export type {
   ReorderDramaEpisodesRequest,
   ApiResult,
 } from './types';
-export type { AppSettings, ProxyMode } from './settingsRepo';
+export type { AppSettings, ProxyMode, OssConfig } from './settingsRepo';
 
 /**
  * 本地 API 门面:方法名/参数/返回形状沿用原服务端版 projectSyncApi 的 drama 子集,
@@ -73,24 +73,6 @@ export const localApi = {
 
   invalidateCachedImageData(assetId: string): void {
     imageRepo.invalidateCachedImageData(assetId);
-  },
-
-  /**
-   * 合规资产反查(开源版保留兼容实现):
-   * 扫描图片 data 缓存,匹配 vendorAssetId/assetId 字段,返回本地可访问 URL。
-   * 真人核身链路已移除,新数据不会再产生 asset:// 引用。
-   */
-  resolveComplianceAssetUrl(assetUrl: string): string | undefined {
-    if (!assetUrl) return undefined;
-    const id = assetUrl.startsWith('asset://') ? assetUrl.slice('asset://'.length) : assetUrl;
-    if (!id) return undefined;
-    for (const [assetId, data] of imageDataCacheEntries()) {
-      const vendorAssetId = data?.compliance?.assetId || data?.vendorAssetId;
-      if (vendorAssetId === id) {
-        return imageRepo.peekUrl(assetId) || data?.__local_url || data?.original_url;
-      }
-    }
-    return undefined;
   },
 
   // ---------- Projects ----------
@@ -258,8 +240,3 @@ export const localApi = {
     return importProject(bundle);
   },
 };
-
-/** imageDataCache 遍历辅助 */
-function imageDataCacheEntries(): [string, Record<string, any>][] {
-  return imageRepo.getCacheEntries();
-}

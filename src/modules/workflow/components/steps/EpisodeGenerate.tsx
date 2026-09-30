@@ -24,10 +24,6 @@ import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
 import { concurrentBatchExecute } from '@/shared/utils/concurrentBatch';
 import { message } from '@/shared/utils/message';
 import { getEpisodeVideoUrl } from '../../utils/workflowUtils';
-import { checkEpisodeVideoCompliance } from '../../utils/videoComplianceCheck';
-import { VideoComplianceDialog } from '@/shared/components/ui/VideoComplianceDialog';
-import { getComplianceHelpers } from '../../providers/compliance-factory';
-import { localApi } from '@/storage';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
 import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -178,10 +174,7 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
 
   // 批量生成控制
   const abortBatchRef = useRef<AbortController | null>(null);
-  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
-  // 批量合规审核 dialog（批量生成前统一审核所有角色的头像/多视图/形象照）
-  const [batchComplianceOpen, setBatchComplianceOpen] = useState(false);
-  // 批量生成统一使用的视频模型（默认第一个可用模型，videoModels 异步加载后兜底赋值）
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);  // 批量生成统一使用的视频模型（默认第一个可用模型，videoModels 异步加载后兜底赋值）
   const [batchVideoModel, setBatchVideoModel] = useState<string>('');
   useEffect(() => {
     // 当前选择仍可用（含 30s 过滤后的列表）则保持，否则回退到第一个可用模型
@@ -190,7 +183,7 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
     if (first?.id && first.id !== batchVideoModel) setBatchVideoModel(first.id);
   }, [videoModels, batchVideoModel]);
 
-  // 批量执行（合规检查与预览确认通过后调用）
+  // 批量执行（预览确认通过后调用）
   const executeBatchGenerate = useCallback(async () => {
     const ungeneratedEpisodes = episodes.filter(ep => !ep.generatedVideoUrl);
     if (ungeneratedEpisodes.length === 0) return;
@@ -237,36 +230,6 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
       return;
     }
 
-    // 合规前置检查：与单条生成（EpisodeCard）同一套门禁，
-    // 防止批量路径绕过合规 dialog 直接提交未审核图片
-    const offenders = ungeneratedEpisodes.filter(
-      (ep) =>
-        checkEpisodeVideoCompliance({
-          episode: ep,
-          characters,
-          scenes,
-          videoModels,
-          currentEpisodeNumber,
-          modelOverride: batchVideoModel || undefined,
-        }).hasUncompliant,
-    );
-    if (offenders.length > 0) {
-      // 首尾帧模式的片段审核对象是首尾帧图，需在片段卡片上单独处理
-      const framesModeOffenders = offenders.filter(
-        (ep) => ep.videoGenerationMode === 'first_last_frame',
-      );
-      if (framesModeOffenders.length > 0) {
-        message.warning(
-          `「${framesModeOffenders[0].title || '未命名片段'}」等首尾帧模式片段存在未审核的首尾帧图，请先在片段卡片上单独点击「生成视频」完成合规审核`,
-        );
-        return;
-      }
-      // 参考图模式：打开统一合规审核 dialog（展示所有角色的头像/多视图/形象照），
-      // 审核完成后自动开始批量生成
-      setBatchComplianceOpen(true);
-      return;
-    }
-
     // 收集所有片段的预览请求数据
     const previewItems: Array<{ endpoint: string; body: any }> = [];
     for (const episode of ungeneratedEpisodes) {
@@ -281,40 +244,6 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
       return;
     }
 
-    await executeBatchGenerate();
-  };
-
-  // 批量合规审核完成：把厂商合规结果持久化到 image_asset.data（与单条生成同一通道）
-  const handleBatchCheckComplete = async (
-    successImages: Array<{ imageUrl: string; assetId?: string; assetKey?: string; groupId?: string; url?: string }>,
-  ) => {
-    const validImages = successImages.filter((img) => !!img.assetId && !!img.assetKey);
-    if (validImages.length === 0) return;
-    const projectId = useWorkflowStore.getState().currentProjectId;
-    const provider = videoModels.find((m) => m.id === batchVideoModel)?.provider;
-    const helpers = getComplianceHelpers(provider);
-    if (!projectId || !helpers) return;
-    for (const v of validImages) {
-      try {
-        const patch = helpers.buildCompliancePatch({
-          assetId: v.assetId!,
-          isCompliant: true,
-          groupId: v.groupId,
-          url: v.url,
-        });
-        await localApi.patchImageAssetData(projectId, v.assetKey!, patch);
-      } catch (e) {
-        console.warn('[批量合规] patchImageAssetData 失败:', v.assetKey, e);
-      }
-    }
-    // 缓存已由 patchImageAssetData 自动更新，触发 UI 重渲染读取最新合规状态
-    useWorkflowStore.getState().bumpImageComplianceVersion();
-  };
-
-  // 批量合规审核确认：关闭 dialog 并开始批量生成
-  // （generateEpisodeVideo 会从缓存自动构建合规 assetIdMap，无需逐片段传入）
-  const handleBatchComplianceConfirm = async () => {
-    setBatchComplianceOpen(false);
     await executeBatchGenerate();
   };
 
@@ -625,48 +554,6 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
         </div>
       )}
 
-      {/* 批量合规审核 dialog：展示所有角色的头像/多视图/形象照（不按提示词过滤），
-          以及各片段提示词引用的分镜参考附件图，审核完成后自动开始批量生成 */}
-      <VideoComplianceDialog
-        open={batchComplianceOpen}
-        onClose={() => setBatchComplianceOpen(false)}
-        onConfirm={handleBatchComplianceConfirm}
-        onCheckComplete={handleBatchCheckComplete}
-        characters={characters.map((char) => ({
-          ...char,
-          avatarImages: char.avatarImages,
-          multiViewImages: char.multiViewImages,
-          fullBodyImages: char.fullBodyImages,
-        }))}
-        scenes={scenes
-          .filter((s) => s.isDerived)
-          .map((s) => ({
-            id: s.id,
-            name: s.name,
-            imageUrls: s.imageUrls,
-            imageAssetIds: s.imageAssetIds,
-          }))}
-        shotPrompts={[]}
-        shotRefImages={(() => {
-          // 汇总所有片段提示词引用的分镜附件图（按 URL 去重）
-          const byUrl = new Map<string, { imageUrl: string; imageName: string; assetKey?: string }>();
-          for (const ep of episodes) {
-            const allPrompts = [...(ep.shots || []).map((s) => s.prompt || ''), ep.videoPrompt || ''].join(' ');
-            const usedUrls = new Set<string>();
-            for (const match of allPrompts.matchAll(/!<ref\s+url="([^"]+)"\s+type="image">/g)) {
-              usedUrls.add(match[1]);
-            }
-            for (const s of ep.shots || []) {
-              for (const a of s.referenceAssets || []) {
-                if (a.type !== 'image' || !usedUrls.has(a.assetId) || byUrl.has(a.assetId)) continue;
-                byUrl.set(a.assetId, { imageUrl: a.assetId, imageName: a.name || '参考附件', assetKey: a.assetKey });
-              }
-            }
-          }
-          return [...byUrl.values()];
-        })()}
-        episodeId="batch"
-      />
     </div>
   );
 };

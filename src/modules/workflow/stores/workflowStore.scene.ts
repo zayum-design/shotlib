@@ -16,7 +16,7 @@ import { Modal } from 'antd';
 import type { StoreApi } from 'zustand';
 import * as workflowApi from '../api/workflowApi';
 import { buildGenerateSceneImageRequestBody, buildGenerateSceneViewRequestBody } from '../api/sceneApi';
-import { getCurrentProjectAspectRatio, parseFramePrompt, saveWorkflowStateToLocal, syncEpisodePromptImages } from '../utils/workflowUtils';
+import { parseFramePrompt, saveWorkflowStateToLocal, syncEpisodePromptImages } from '../utils/workflowUtils';
 import { userStorage } from '@/shared/utils/userScopedStorage';
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
 import { shouldPreview, triggerPreview } from './workflowStore';
@@ -47,8 +47,8 @@ regenerateSceneImage: async (sceneId: string, index: number) => {
 
   const referenceImageUrl = scene.imageUrls?.find((url, i) => i !== index && !!url);
 
-  // 比例：env 下发（sceneImageAspectRatio）优先，回退项目比例；预览与提交共用（args 单点）
-  const aspectRatio = get().sceneImageAspectRatio || getCurrentProjectAspectRatio();
+  // 产品决策:场景图生成固定 16:9(与显示一致,不随项目比例变化);预览与提交共用(args 单点)
+  const aspectRatio = '16:9';
 
   const doGenerate = async () => {
 
@@ -240,8 +240,8 @@ generateSceneImages: async (sceneId: string, model?: string, selectedViews?: num
   // 添加纯场景提示词,避免生成人物
   fullPrompt = `${fullPrompt},纯场景画面,无人物,无角色,空镜头,环境特写。画风仅作为整体色调/光影/质感参考，不改变场景本身的结构、空间关系与物体形态，严禁出现融化的时钟、漂浮的物体、不可能几何等艺术家标志性符号`;
 
-  // 比例：env 下发（sceneImageAspectRatio）优先，回退项目比例；预览与提交共用（args 单点）
-  const aspectRatio = get().sceneImageAspectRatio || getCurrentProjectAspectRatio();
+  // 产品决策:场景图生成固定 16:9(与显示一致,不随项目比例变化);预览与提交共用(args 单点)
+  const aspectRatio = '16:9';
   const sceneModelConfig = imageModels.find((m) => m.id === (model || scene.model));
   const sceneMultiView = sceneModelConfig?.supports?.sequential_image_generation;
 

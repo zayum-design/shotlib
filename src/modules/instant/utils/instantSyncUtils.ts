@@ -182,7 +182,7 @@ export async function saveInstantToServer(
   const markBeforeSave = readInstantDirtyMark(projectId);
 
   // 1. 保存资产数据（角色和场景的完整定义）— 与短剧剧本创作保持一致
-  // 调试：确认发送给后端的角色数据中是否携带合规元数据
+  // 调试：确认发送给后端的角色数据结构
   try {
     console.log(
       '[saveInstantToServer] sending instantCharacters sample:',

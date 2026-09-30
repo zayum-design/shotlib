@@ -13,22 +13,11 @@
 // limitations under the License.
 
 import { useState, useMemo } from 'react';
-import { Tabs, Spin, Tooltip } from 'antd';
-import { Users, MapPin, Video, ImageIcon, Play, Headphones, Check } from 'lucide-react';
+import { Tabs, Spin } from 'antd';
+import { Users, MapPin, Video, ImageIcon, Play, Headphones } from 'lucide-react';
 import { useWorkflowStore } from '../stores/workflowStore';
 import { AudioAssetsPanel } from './AudioAssetsPanel';
-import { useProjectStore } from '@/shared/stores/projectStore';
 import { useResolvedImageUrls } from '../hooks/useWorkflowImageResolver';
-import { localApi } from '@/storage';
-import { readAnyCompliance } from '../providers/compliance-factory';
-
-/** 从 localApi 缓存读取图片合规状态 */
-const getIsCompliant = (img: any): boolean => {
-  if (!img?.assetId) return false;
-  const imgData = localApi.getCachedImageData(img.assetId);
-  const compliance = imgData ? readAnyCompliance(imgData) : undefined;
-  return !!compliance?.isCompliant;
-};
 
 export const GlobalAssetsPanel: React.FC = () => {
   const {
@@ -58,11 +47,8 @@ export const GlobalAssetsPanel: React.FC = () => {
   const { getUrl } = useResolvedImageUrls(allAssetIds);
   const resolveUrl = (assetId?: string, fallbackUrl?: string) => getUrl(assetId) || fallbackUrl || '';
 
-  const aspectRatio = useProjectStore((s) => {
-    const project = s.projects.find((p) => p.id === s.currentProjectId);
-    return project?.aspectRatio || '16:9';
-  });
-  const sceneAspect = aspectRatio === '9:16' ? 'aspect-[9/16]' : aspectRatio === '21:9' ? 'aspect-[21/9]' : aspectRatio === '1:1' ? 'aspect-square' : 'aspect-video';
+  // 场景/道具图显示固定 16:9(与生成比例一致,不随项目比例变化)
+  const sceneAspect = 'aspect-video';
 
   const [activeTab, setActiveTab] = useState('characters');
   const [playingVideoKey, setPlayingVideoKey] = useState<string | null>(null);
@@ -112,13 +98,6 @@ export const GlobalAssetsPanel: React.FC = () => {
                             <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-bg-tertiary flex-shrink-0">
                               {resolveUrl(avatarImg?.assetId, avatarImg?.imageUrl) ? (
                                 <>
-                                  {getIsCompliant(avatarImg) && (
-                                    <Tooltip title="已通过合规检查">
-                                      <div className="absolute top-0.5 right-0.5 z-10 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                                        <Check size={8} strokeWidth={4} />
-                                      </div>
-                                    </Tooltip>
-                                  )}
                                   <img src={resolveUrl(avatarImg?.assetId, avatarImg?.imageUrl)} alt={char.name} className="w-full h-full object-cover" />
                                 </>
                               ) : (
@@ -139,14 +118,7 @@ export const GlobalAssetsPanel: React.FC = () => {
                               {resolveUrl(multiViewImg?.assetId, multiViewImg?.imageUrl) && (
                                 <div className="flex-shrink-0">
                                   <span className="text-xs text-text-muted">全身照</span>
-                                  <div className="relative aspect-[9/16] h-28 rounded-lg overflow-hidden bg-bg-tertiary border border-border mt-1">
-                                    {getIsCompliant(multiViewImg) && (
-                                      <Tooltip title="已通过合规检查">
-                                        <div className="absolute top-1 right-1 z-10 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                                          <Check size={8} strokeWidth={4} />
-                                        </div>
-                                      </Tooltip>
-                                    )}
+                                  <div className="relative aspect-video h-28 rounded-lg overflow-hidden bg-bg-tertiary border border-border mt-1">
                                     <img src={resolveUrl(multiViewImg?.assetId, multiViewImg?.imageUrl)} alt="全身照" className="w-full h-full object-cover" />
                                   </div>
                                 </div>
@@ -158,17 +130,10 @@ export const GlobalAssetsPanel: React.FC = () => {
                                     {portraits.map((img, idx) => (
                                       <div
                                         key={idx}
-                                        className="relative aspect-[9/16] h-28 rounded-lg overflow-hidden bg-bg-tertiary border border-border flex-shrink-0"
+                                        className="relative aspect-video h-28 rounded-lg overflow-hidden bg-bg-tertiary border border-border flex-shrink-0"
                                       >
                                         {resolveUrl(img.assetId, img.imageUrl) ? (
                                           <>
-                                            {getIsCompliant(img) && (
-                                              <Tooltip title="已通过合规检查">
-                                                <div className="absolute top-1 right-1 z-10 w-3 h-3 bg-cyan-500 text-white rounded-full flex items-center justify-center shadow-sm">
-                                                  <Check size={8} strokeWidth={4} />
-                                                </div>
-                                              </Tooltip>
-                                            )}
                                             <img src={resolveUrl(img.assetId, img.imageUrl)} alt={img.name || `形象照 ${idx + 1}`} className="w-full h-full object-cover" />
                                           </>
                                         ) : img.isGenerating ? (

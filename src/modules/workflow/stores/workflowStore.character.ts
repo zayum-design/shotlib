@@ -21,6 +21,9 @@ import {
   buildGenerateCharacterPortraitRequestBody,
 } from '../api/characterApi';
 import { saveWorkflowStateToLocal, syncEpisodePromptImages } from '../utils/workflowUtils';
+
+// 产品决策:角色多视图/形象照的生成与显示固定 16:9,不随项目比例变化
+const CHARACTER_ASSET_ASPECT_RATIO = '16:9';
 import { MAX_PORTRAITS_PER_CHARACTER } from '@/shared/types/index';
 import { userStorage } from '@/shared/utils/userScopedStorage';
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
@@ -384,7 +387,7 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
             referenceAvatarUrl,
             filteredGlobalPrompt,
             imagePrompt,
-            '16:9',
+            CHARACTER_ASSET_ASPECT_RATIO,
             undefined,
             undefined,
             true,
@@ -450,7 +453,6 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
                   name: '人物多视图',
                   isPortrait: false, // 标记为多视图，不是形象照
                 }));
-                // 合规状态由 image_asset.data 缓存提供，不再保留 isCompliant
                 return {
                   ...c,
                   multiViewImages: newMultiView,
@@ -505,9 +507,17 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
       if (!character) return;
 
       const filteredGlobalPrompt = era?.globalPrompt && !String(era.globalPrompt).startsWith('undefined') ? era.globalPrompt : undefined;
-      // args 单点：doGenerate 与 triggerPreview 共用（多视图固定 16:9；形象照固定 9:16）
-      const aspectRatio = isMultiView ? '16:9' : '9:16';
+      // args 单点：doGenerate 与 triggerPreview 共用（多视图/形象照固定 16:9）
+      const aspectRatio = CHARACTER_ASSET_ASPECT_RATIO;
       const currentEpisodeNumber = get().currentEpisodeNumber ?? 1;
+      // 用户提示词参与重生成:优先用该图生成时保存的 prompt(形象照弹窗输入的提示词存在
+      // fullBodyImages[index].prompt),缺失才回退角色描述;否则固定模板出图与用户输入无关
+      const savedPrompt = isMultiView
+        ? character.multiViewImages?.[index]?.prompt
+        : character.fullBodyImages?.[index]?.prompt;
+      const imagePrompt = (savedPrompt || character.imagePrompt || character.description || undefined) as string | undefined;
+      // 形象照重生成必须用形象照模板(REGENERATE 是四视图设定图模板,与形象照语义无关)
+      const regenerateTemplate = isMultiView ? ('view' as const) : ('portrait' as const);
 
       const doGenerate = async () => {
         set((state) => ({
@@ -531,7 +541,9 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
             undefined,
             true,
             // 多视图跨集共享；形象照按当前分集隔离
-            isMultiView ? 0 : currentEpisodeNumber
+            isMultiView ? 0 : currentEpisodeNumber,
+            imagePrompt,
+            regenerateTemplate
           );
 
           if (!response.success) {
@@ -627,7 +639,7 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
           {
             endpoint: `/api/creator/character/${characterId}/fullbody/${index}`,
             // 预览 body 复用 build（与 regenerateViewApi 真实提交一致，仅 preview=true）
-            body: buildRegenerateViewRequestBody(index, imageModel, filteredGlobalPrompt, aspectRatio, true, true, isMultiView ? 0 : currentEpisodeNumber),
+            body: buildRegenerateViewRequestBody(index, imageModel, filteredGlobalPrompt, aspectRatio, true, true, isMultiView ? 0 : currentEpisodeNumber, imagePrompt, regenerateTemplate),
           },
           doGenerate
         );
@@ -697,7 +709,8 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
             model: model || character.model,
             count: 1,
             globalPrompt: filteredGlobalPrompt,
-            aspectRatio: '16:9',
+            // 形象照固定 16:9
+            aspectRatio: CHARACTER_ASSET_ASPECT_RATIO,
             async: true,
             // 形象照按当前分集隔离
             episodeNumber: currentEpisodeNumber,
@@ -760,7 +773,8 @@ export function createCharacterSlice(set: SetFn, get: GetFn) {
               model: model || character.model,
               count: 1,
               globalPrompt: filteredGlobalPrompt,
-              aspectRatio: '16:9',
+              // 形象照固定 16:9,与真实提交一致
+              aspectRatio: CHARACTER_ASSET_ASPECT_RATIO,
               preview: true,
               async: true,
               episodeNumber: currentEpisodeNumber,

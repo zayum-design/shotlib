@@ -100,7 +100,7 @@ export function useInstantAvatarGeneration({
                     isGeneratingAvatar: false,
                     avatarImages: urls.map((url) => ({
                       imageUrl: url,
-                      // 头像行 asset_key=charId，合规检查据此定位写入 data.seedance
+                      // 头像行 asset_key=charId
                       assetId: char.id,
                       name: '头像',
                       isPortrait: true,

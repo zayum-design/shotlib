@@ -18,7 +18,6 @@ import { getCurrentProjectAspectRatio, parseFramePrompt, saveWorkflowStateToLoca
 import { convertPromptToHtml } from './workflowStore.episode.utils';
 import { userStorage } from '@/shared/utils/userScopedStorage';
 import { localApi } from '@/storage';
-import { getComplianceHelpers } from '../providers/compliance-factory';
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
 import { shouldPreview, triggerPreview } from './workflowStore';
 import type { WorkflowState } from './workflowStore';
@@ -116,18 +115,6 @@ export function createFrameSlice(set: SetFn, get: GetFn) {
 	      }
 
 	      if (imageUrl) {
-	        // 重新生成首帧图：显式清除旧 image_asset 的合规标记，避免新图误用旧合规 assetId
-	        const oldFirstAssetId = episode?.firstFrameImageAssetId;
-	        if (oldFirstAssetId && oldFirstAssetId !== imageAssetId) {
-	          const videoModelConfig = get().videoModels.find((m) => m.id === episode?.model);
-	          const frameHelpers = getComplianceHelpers(videoModelConfig?.provider);
-	          const clearProjectId = get().currentProjectId;
-	          if (frameHelpers && clearProjectId) {
-	            localApi
-	              .patchImageAssetData(clearProjectId, oldFirstAssetId, frameHelpers.buildCompliancePatch({ assetId: '', isCompliant: false }))
-	              .catch((e: any) => console.warn('[generateFirstFrame] 清除旧首帧合规标记失败:', e?.message));
-	          }
-	        }
 	        // 更新首帧图片URL与资产ID
 	        const updatedEpisodes = get().episodes.map((e) =>
 	          e.id === episodeId
@@ -308,18 +295,6 @@ export function createFrameSlice(set: SetFn, get: GetFn) {
 	      }
 
 	      if (imageUrl) {
-	        // 重新生成尾帧图：显式清除旧 image_asset 的合规标记，避免新图误用旧合规 assetId
-	        const oldLastAssetId = episode?.lastFrameImageAssetId;
-	        if (oldLastAssetId && oldLastAssetId !== imageAssetId) {
-	          const videoModelConfig = get().videoModels.find((m) => m.id === episode?.model);
-	          const frameHelpers = getComplianceHelpers(videoModelConfig?.provider);
-	          const clearProjectId = get().currentProjectId;
-	          if (frameHelpers && clearProjectId) {
-	            localApi
-	              .patchImageAssetData(clearProjectId, oldLastAssetId, frameHelpers.buildCompliancePatch({ assetId: '', isCompliant: false }))
-	              .catch((e: any) => console.warn('[generateLastFrame] 清除旧尾帧合规标记失败:', e?.message));
-	          }
-	        }
 	        // 更新尾帧图片URL与资产ID
 	        const updatedEpisodes = get().episodes.map((e) =>
 	          e.id === episodeId
