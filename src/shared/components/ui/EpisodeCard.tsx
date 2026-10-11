@@ -470,28 +470,6 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     setCurrentVideoIndex((prev) => (prev === allVideos.length - 1 ? 0 : prev + 1));
   };
 
-  // 处理视频模型变化
-  const handleVideoModelChange = (model: string) => {
-    const newModel = videoModels.find(m => m.id === model);
-    const newDurationConfig = newModel?.duration;
-    let newVideoDuration = episode.videoDuration ?? newDurationConfig?.default ?? 5;
-    if (newDurationConfig) {
-      // 如果当前时长不在新模型支持范围内，调整为默认值
-      if (newVideoDuration === -1 && !newDurationConfig.allowAuto) {
-        newVideoDuration = newDurationConfig.default;
-      } else if (newVideoDuration !== -1 && (newVideoDuration < newDurationConfig.min || newVideoDuration > newDurationConfig.max)) {
-        newVideoDuration = newDurationConfig.default;
-      }
-    }
-    // 如果新模型不支持全能参考，重置生成方式为首尾帧
-    const supportsReferenceImage = !!newModel?.supports?.reference_image;
-    const updates: Partial<Episode> = { model, videoDuration: newVideoDuration };
-    if (!supportsReferenceImage) {
-      updates.videoGenerationMode = 'first_last_frame';
-    }
-    updateEpisode(episode.id, updates);
-  };
-
   // 判断模型是否支持指定生成模式；兼容两种 supports 写法：
   // - reference_image: 显式 reference_image=true（ComfyUI r2v / 云厂商全能参考）
   // - first_last_frame: 显式 first_frame=true && last_frame=true，或 first_last_frame=true（ComfyUI 简写）
@@ -505,6 +483,32 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     return m.supports?.reference_image === true;
   };
 
+  // 处理视频模型变化
+  const handleVideoModelChange = (model: string) => {
+    const newModel = videoModels.find(m => m.id === model);
+    const newDurationConfig = newModel?.duration;
+    let newVideoDuration = episode.videoDuration ?? newDurationConfig?.default ?? 5;
+    if (newDurationConfig) {
+      // 如果当前时长不在新模型支持范围内，调整为默认值
+      if (newVideoDuration === -1 && !newDurationConfig.allowAuto) {
+        newVideoDuration = newDurationConfig.default;
+      } else if (newVideoDuration !== -1 && (newVideoDuration < newDurationConfig.min || newVideoDuration > newDurationConfig.max)) {
+        newVideoDuration = newDurationConfig.default;
+      }
+    }
+    // 根据模型能力自动切换生成方式：仅支持参考图 → 全能参考；仅支持首尾帧 → 首尾帧。
+    // 两者都支持时保持当前生成方式不变。
+    const supportsReferenceImage = !!newModel?.supports?.reference_image;
+    const supportsFirstLast = supportsVideoMode(newModel, 'first_last_frame');
+    const updates: Partial<Episode> = { model, videoDuration: newVideoDuration };
+    if (supportsReferenceImage && !supportsFirstLast) {
+      updates.videoGenerationMode = 'reference_image';
+    } else if (supportsFirstLast && !supportsReferenceImage) {
+      updates.videoGenerationMode = 'first_last_frame';
+    }
+    updateEpisode(episode.id, updates);
+  };
+
   // 按当前生成模式过滤模型列表（依据模型配置 json 的 supports 字段，禁止硬编码）；
   // 项目片段时长上限为 30s 时，仅保留 model.json 中 duration.max >= 30 的长片段模型
   const currentGenerationMode = episode.videoGenerationMode ?? 'reference_image';
@@ -514,6 +518,15 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     if (episodeMaxDuration > 15 && ((m as any).duration?.max ?? 15) < episodeMaxDuration) return false;
     return supportsVideoMode(m, currentGenerationMode);
   });
+
+  // 下拉框展示全部模型；不匹配当前生成方式的模型置灰禁用（切换生成方式后即可选择）
+  const videoModelOptions = videoModels
+    .filter((m) => !m.disabled)
+    .filter((m) => !(episodeMaxDuration > 15 && ((m as any).duration?.max ?? 15) < episodeMaxDuration))
+    .map((m) => ({
+      ...m,
+      disabled: !supportsVideoMode(m, currentGenerationMode),
+    }));
 
   // 若当前模型不在过滤后的列表中，自动回退到第一个可用模型；否则保持之前选过的
   const effectiveModelId = filteredVideoModels.some((m) => m.id === episode.model)
@@ -686,7 +699,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
           durationConfig={durationConfig}
           handleVideoDurationChange={handleVideoDurationChange}
           effectiveModelId={effectiveModelId}
-          filteredVideoModels={filteredVideoModels}
+          filteredVideoModels={videoModelOptions}
           handleVideoModelChange={handleVideoModelChange}
           totalDuration={totalDuration}
           handleGenerate={handleGenerate}
