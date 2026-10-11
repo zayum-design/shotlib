@@ -149,3 +149,4 @@ logs/
 
 # macOS
 .DS_Store
+docs/*.json

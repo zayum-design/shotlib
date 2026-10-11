@@ -143,7 +143,10 @@ export class ComfyUIVideoAdapter extends BaseAdapter {
 
     const workflow = injectWorkflow(template, params);
 
-    // 参考生视频(r2v):上传头像/形象照/场景图等参考图,动态注入 ref_images autogrow 节点。
+    // 参考生视频(r2v):上传头像/形象照/场景图等参考图,注入 ref_images autogrow 槽位。
+    // COMFY_AUTOGROW_V3 在 API 格式中必须用点分键(每个槽位一个 key):
+    //   ref_images.ref_image_0 = [load_ref_1, 0]
+    //   而非数组 ref_images = [[load_ref_1, 0]](数组会被当字面值,连线丢失)。
     // MiniMaxH3ReferenceToVideo 最多 9 张 ref_image;未提供参考图时退化为文生视频。
     const needRefImages = !!template['r2v'];
     if (needRefImages) {
@@ -153,7 +156,6 @@ export class ComfyUIVideoAdapter extends BaseAdapter {
       const r2vNode = workflow['r2v'] as { inputs: Record<string, unknown> } | undefined;
       if (r2vNode && refUrls.length > 0) {
         const stamp = Date.now();
-        const refNodes: Array<[string, number]> = [];
         for (let i = 0; i < Math.min(refUrls.length, 9); i++) {
           const name = await uploadImage(
             baseUrl,
@@ -162,9 +164,9 @@ export class ComfyUIVideoAdapter extends BaseAdapter {
           );
           const nodeId = `load_ref_${i + 1}`;
           workflow[nodeId] = { class_type: 'LoadImage', inputs: { image: name } };
-          refNodes.push([nodeId, 0]);
+          // 点分键:ref_images.ref_image_0/ref_image_1/... 对应 <Picture 1>/<Picture 2>/...
+          r2vNode.inputs[`ref_images.ref_image_${i}`] = [nodeId, 0];
         }
-        r2vNode.inputs.ref_images = refNodes;
       }
     }
 
