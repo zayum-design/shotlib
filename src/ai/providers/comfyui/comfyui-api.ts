@@ -81,7 +81,7 @@ export async function submitPrompt(
   return data;
 }
 
-/** 查询任务记录;不存在(仍在队列)返回 undefined */
+/** 查询任务记录;不存在(仍在队列/已被取消删除)返回 undefined */
 export async function getPromptHistory(
   baseUrl: string,
   promptId: string,
@@ -97,6 +97,31 @@ export async function getPromptHistory(
   }
   const data = (await resp.json()) as Record<string, ComfyHistoryEntry>;
   return data[promptId];
+}
+
+/** ComfyUI 队列状态 */
+export interface ComfyQueueStatus {
+  queue_running: Array<[number, string, unknown]>;
+  queue_pending: Array<[number, string, unknown]>;
+}
+
+/** 查询 prompt_id 是否仍在 ComfyUI 队列(running/pending)中 */
+export async function isPromptInQueue(
+  baseUrl: string,
+  promptId: string,
+): Promise<boolean> {
+  const resp = await providerFetch(PROVIDER_ID, `${baseUrl}/queue`, {
+    method: 'GET',
+    timeout: 30000,
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`ComfyUI 查询队列失败 HTTP ${resp.status}: ${text.slice(0, 300)}`);
+  }
+  const data = (await resp.json()) as ComfyQueueStatus;
+  const inRunning = (data.queue_running || []).some((item) => item[1] === promptId);
+  const inPending = (data.queue_pending || []).some((item) => item[1] === promptId);
+  return inRunning || inPending;
 }
 
 /** 上传参考图到 ComfyUI input 目录,返回可供 LoadImage 引用的文件名 */

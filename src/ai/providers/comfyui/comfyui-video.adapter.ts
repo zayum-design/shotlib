@@ -40,6 +40,7 @@ import {
   extractHistoryError,
   fetchImageBlob,
   getPromptHistory,
+  isPromptInQueue,
   submitPrompt,
   uploadImage,
 } from './comfyui-api';
@@ -165,13 +166,36 @@ export class ComfyUIVideoAdapter extends BaseAdapter {
 
     // 队列中:history 还没有记录
     if (!entry) {
+      // history 无记录有两种可能:仍在队列(刚提交) / 已被取消或删除。
+      // 仅在确认队列中也不存在时判为已取消,避免前端无限轮询一个已不存在的任务。
+      const inQueue = await isPromptInQueue(baseUrl, taskId);
+      if (!inQueue) {
+        return {
+          success: false,
+          data: {
+            taskId,
+            status: TaskStatus.FAILED,
+            extra: { error: '任务已在 ComfyUI 侧被取消或删除' },
+          },
+          metadata: {
+            modelId: modelId || this.config.modelId,
+            processingTime: Date.now() - startedAt,
+            timestamp: new Date().toISOString(),
+          },
+          error: {
+            code: 'COMFYUI_TASK_CANCELLED',
+            message: '[ComfyUI] 任务已取消或丢失',
+            retryable: false,
+          },
+        };
+      }
       return this.buildSuccessResponse(
         { taskId, status: TaskStatus.PENDING },
         { modelId: modelId || this.config.modelId, processingTime: Date.now() - startedAt },
       );
     }
 
-    // 执行失败
+    // 执行失败 / 被中断(status_str=error,含 execution_interrupted 等)
     if (entry.status?.status_str === 'error') {
       const message = extractHistoryError(entry);
       const oom = /out of memory/i.test(message);
@@ -189,7 +213,7 @@ export class ComfyUIVideoAdapter extends BaseAdapter {
         },
         error: {
           code: 'COMFYUI_EXEC_ERROR',
-          message: `[ComfyUI] ${message}${oom ? '(建议:降低分辨率或时长后重试)' : ''}`,
+          message: `[ComfyUI] 任务执行失败: ${message}${oom ? '(建议:降低分辨率或时长后重试)' : ''}`,
           retryable: !oom,
         },
       };

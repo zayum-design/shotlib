@@ -591,7 +591,13 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
             throw new Error(response.message || '查询任务状态失败');
           }
 
-          if (response.data.status === 'failed' || response.data.error) {
+          if (response.data.status === 'failed') {
+            // 任务失败不可恢复,直接抛出带明确标记的错误,避免被笼统提示(系统繁忙)吞掉后继续轮询
+            throw new Error(response.data.error?.message && !/系统繁忙/.test(response.data.error.message)
+              ? response.data.error.message
+              : '视频生成任务失败');
+          }
+          if (response.data.error) {
             throw new Error(response.data.error?.message || '视频生成任务失败');
           }
 

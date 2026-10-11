@@ -37,6 +37,7 @@ import {
   collectOutputUrls,
   fetchImageBlob,
   getPromptHistory,
+  isPromptInQueue,
   submitPrompt,
   uploadImage,
 } from './comfyui-api';
@@ -166,7 +167,20 @@ export class ComfyUIImageAdapter extends BaseAdapter {
         if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) throw pollError;
         continue;
       }
-      if (!entry) continue;
+      if (!entry) {
+        // history 无记录:仍在队列(刚提交) / 已被取消删除。
+        // 队列中也找不到时判为已取消,避免空转到超时。
+        const inQueue = await isPromptInQueue(baseUrl, prompt_id);
+        if (!inQueue) {
+          throw new ModelException(
+            '任务已在 ComfyUI 侧被取消或删除',
+            'COMFYUI_TASK_CANCELLED',
+            400,
+            false,
+          );
+        }
+        continue;
+      }
       if (entry.status?.completed) {
         const urls = collectOutputUrls(baseUrl, entry);
         if (urls.length === 0) {
