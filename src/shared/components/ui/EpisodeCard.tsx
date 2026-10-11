@@ -493,7 +493,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
   };
 
   // 判断模型是否支持指定生成模式；兼容两种 supports 写法：
-  // - reference_image: 显式 reference_image=true，或至少支持 text_to_video（可降级为文生视频）
+  // - reference_image: 显式 reference_image=true（ComfyUI r2v / 云厂商全能参考）
   // - first_last_frame: 显式 first_frame=true && last_frame=true，或 first_last_frame=true（ComfyUI 简写）
   const supportsVideoMode = (m: ModelConfig, mode: 'first_last_frame' | 'reference_image'): boolean => {
     if (mode === 'first_last_frame') {
@@ -502,7 +502,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
         (m.supports?.first_frame === true && m.supports?.last_frame === true)
       );
     }
-    return m.supports?.reference_image === true || m.supports?.text_to_video === true;
+    return m.supports?.reference_image === true;
   };
 
   // 按当前生成模式过滤模型列表（依据模型配置 json 的 supports 字段，禁止硬编码）；

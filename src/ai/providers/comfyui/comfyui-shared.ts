@@ -23,6 +23,7 @@ import qwenImageT2i from './workflows/qwen-image-t2i.json';
 import qwenImageEdit from './workflows/qwen-image-edit.json';
 import h3T2v from './workflows/h3-t2v.json';
 import h3Fl2v from './workflows/h3-fl2v.json';
+import h3R2v from './workflows/h3-r2v.json';
 
 /** 内建工作流模板注册表(model.json 变体的 workflow 字段 → 模板) */
 const WORKFLOW_TEMPLATES: Record<string, ComfyWorkflowTemplate> = {
@@ -30,6 +31,7 @@ const WORKFLOW_TEMPLATES: Record<string, ComfyWorkflowTemplate> = {
   'qwen-image-edit': qwenImageEdit as unknown as ComfyWorkflowTemplate,
   'h3-t2v': h3T2v as unknown as ComfyWorkflowTemplate,
   'h3-fl2v': h3Fl2v as unknown as ComfyWorkflowTemplate,
+  'h3-r2v': h3R2v as unknown as ComfyWorkflowTemplate,
 };
 
 /** 服务器地址存在厂商 Key 栏;不是密钥,是 http(s) 基址 */

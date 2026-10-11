@@ -66,6 +66,7 @@
       "supports": {
         "text_to_video": true,
         "first_last_frame": false,
+        "reference_image": false,
         "seed": true,
         "size_preset": false,
         "size_custom": true,
@@ -92,6 +93,33 @@
       "supports": {
         "text_to_video": true,
         "first_last_frame": true,
+        "reference_image": false,
+        "seed": true,
+        "size_preset": false,
+        "size_custom": true,
+        "max_resolution": "1920x1088"
+      },
+      "priceType": "free",
+      "concurrent_limit": 1
+    },
+    {
+      "id": "minimax-h3-r2v",
+      "name": "[ComfyUI] MiniMax H3 参考生视频",
+      "type": "video",
+      "workflow": "h3-r2v",
+      "description": "以头像/形象照/场景图为参考图生成视频,保持角色穿着与面部一致(最多 9 张参考图)",
+      "enabled": true,
+      "async": true,
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": false
+      },
+      "supports": {
+        "text_to_video": true,
+        "reference_image": true,
+        "reference_image_max_count": 9,
         "seed": true,
         "size_preset": false,
         "size_custom": true,
