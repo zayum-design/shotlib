@@ -1,0 +1,104 @@
+{
+  "id": "comfyui",
+  "name": "ComfyUI 自建服务器",
+  "description": "自建 ComfyUI 服务器(Qwen-Image-2.1 图片 / MiniMax H3 视频)。下方 Key 栏填写服务器地址,如 http://127.0.0.1:8188",
+  "apiDocUrl": "https://docs.comfy.org/development/comfyui-server/comms_routes",
+  "config": {
+    "proxyDefault": false
+  },
+  "variants": [
+    {
+      "id": "qwen-image-t2i",
+      "name": "Qwen-Image-2.1 文生图",
+      "type": "image",
+      "workflow": "qwen-image-t2i",
+      "description": "自建服务器 Qwen-Image-2.1 GGUF 文生图,约 1~2 分钟/张",
+      "enabled": true,
+      "async": false,
+      "supports": {
+        "text_to_image": true,
+        "image_to_image": false,
+        "negative_prompt": false,
+        "seed": true,
+        "size_preset": false,
+        "size_custom": true,
+        "max_resolution": "2048x2048"
+      },
+      "priceType": "free",
+      "rpm": 30,
+      "ipm": 60
+    },
+    {
+      "id": "qwen-image-edit",
+      "name": "Qwen-Image-2.1 图生图编辑",
+      "type": "image",
+      "workflow": "qwen-image-edit",
+      "description": "以参考图为底按提示词编辑(上传图 → VAEEncode → denoise 0.85)",
+      "enabled": true,
+      "async": false,
+      "supports": {
+        "text_to_image": false,
+        "image_to_image": true,
+        "negative_prompt": false,
+        "seed": true,
+        "size_preset": false,
+        "size_custom": true,
+        "max_resolution": "2048x2048"
+      },
+      "priceType": "free",
+      "rpm": 30,
+      "ipm": 60
+    },
+    {
+      "id": "minimax-h3-t2v",
+      "name": "MiniMax H3 文生视频",
+      "type": "video",
+      "workflow": "h3-t2v",
+      "description": "自建服务器 MiniMax H3(540p 15 秒约 15~30 分钟)",
+      "enabled": true,
+      "async": true,
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": false
+      },
+      "supports": {
+        "text_to_video": true,
+        "first_last_frame": false,
+        "seed": true,
+        "size_preset": false,
+        "size_custom": true,
+        "max_resolution": "1920x1088"
+      },
+      "priceType": "free",
+      "concurrent_limit": 1,
+      "recommended": true
+    },
+    {
+      "id": "minimax-h3-fl2v",
+      "name": "MiniMax H3 首尾帧视频",
+      "type": "video",
+      "workflow": "h3-fl2v",
+      "description": "给定首帧/尾帧生成中间过程视频(首尾帧图片会上传到服务器)",
+      "enabled": true,
+      "async": true,
+      "duration": {
+        "min": 4,
+        "max": 15,
+        "default": 5,
+        "allowAuto": false
+      },
+      "supports": {
+        "text_to_video": true,
+        "first_last_frame": true,
+        "seed": true,
+        "size_preset": false,
+        "size_custom": true,
+        "max_resolution": "1920x1088"
+      },
+      "priceType": "free",
+      "concurrent_limit": 1
+    }
+  ]
+}

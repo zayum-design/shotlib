@@ -29,6 +29,7 @@ import moonshotJson from '@/config/models/moonshot.json';
 import nanoBananaJson from '@/config/models/nano-banana.json';
 import sunoJson from '@/config/models/suno.json';
 import volcengineJson from '@/config/models/volcengine.json';
+import comfyuiJson from '@/config/models/comfyui.json';
 
 /** model.json 变体段(与后端 VariantConfig 对齐,保留厂商专用字段) */
 export interface ProviderVariant {
@@ -103,6 +104,7 @@ const PROVIDER_CONFIGS: ProviderConfig[] = [
   nanoBananaJson,
   sunoJson,
   volcengineJson,
+  comfyuiJson,
 ] as unknown as ProviderConfig[];
 
 /** 全部供应商原始配置 */

@@ -53,7 +53,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createAdapter } from '@/ai/core/adapter-factory';
-import { buildProxyUrl } from '@/ai/core/client';
+import { buildProxyUrl, providerFetch } from '@/ai/core/client';
 import {
   getAllProviderConfigs,
   getModelsByType,
@@ -101,6 +101,8 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
   const [testMsg, setTestMsg] = useState('');
+  /** comfyui:Key 栏填的是服务器地址而非密钥 */
+  const isComfyui = config.id === 'comfyui';
 
   // 文本适配器存在才提供测试(用最小文本请求验证 Key 真实有效)
   const textAdapter = useMemo(
@@ -135,6 +137,46 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
       setSaving(false);
     }
   }, [config.id, config.name, value, message]);
+
+  /** comfyui 连通性测试:GET /system_stats 通即视为已连接(返回版本与 GPU 数) */
+  const handleComfyTest = useCallback(async () => {
+    const base = value.trim().replace(/\/+$/, '');
+    if (!base) {
+      message.warning('请先填写 ComfyUI 服务器地址');
+      return;
+    }
+    if (!/^https?:\/\//i.test(base)) {
+      message.warning('地址须以 http:// 或 https:// 开头');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    setTestMsg('');
+    try {
+      // 先保存,让适配器读到最新地址
+      await settingsRepo.setApiKey(config.id, base);
+      const resp = await providerFetch(config.id, `${base}/system_stats`, { timeout: 10000 });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as {
+        system?: { comfyui_version?: string };
+        devices?: unknown[];
+      };
+      const version = data?.system?.comfyui_version;
+      const gpus = Array.isArray(data?.devices) ? data.devices.length : 0;
+      setTestResult('ok');
+      setTestMsg(`已连接${version ? `(ComfyUI ${version}` : ''}${gpus > 0 ? ` · ${gpus} GPU` : ''}${version ? ')' : ''}`);
+    } catch (error) {
+      setTestResult('fail');
+      const reason = error instanceof Error ? error.message : String(error);
+      setTestMsg(
+        /Failed to fetch|NetworkError|CORS/i.test(reason)
+          ? `无法连接(${reason})。若跨域被拒绝,请确认服务器启动时带 --enable-cors-header`
+          : `连接失败:${reason}`,
+      );
+    } finally {
+      setTesting(false);
+    }
+  }, [config.id, value, message]);
 
   const handleTest = useCallback(async () => {
     const key = value.trim();
@@ -171,7 +213,9 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
           <Space size={8} wrap>
             <Text strong>{config.name}</Text>
             <Text type="secondary" className="text-xs">{summarizeVariants(config)}</Text>
-            {testResult === 'ok' && <Tag color="success" bordered={false}>Key 有效</Tag>}
+            {testResult === 'ok' && (
+              <Tag color="success" bordered={false}>{isComfyui ? '已连接' : 'Key 有效'}</Tag>
+            )}
           </Space>
           {config.description && (
             <div>
@@ -192,12 +236,21 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
         )}
       </div>
       <Space.Compact className="mt-2 w-full max-w-xl">
+        {isComfyui ? (
+          <Input
+            placeholder="ComfyUI 服务器地址,如 http://127.0.0.1:8188"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            autoComplete="off"
+          />
+        ) : (
         <Input.Password
           placeholder={`填写 ${config.name} API Key`}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           autoComplete="off"
         />
+        )}
         <Button
           type="primary"
           ghost
@@ -207,15 +260,20 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
         >
           保存
         </Button>
-        {textAdapter && firstTextVariant && (
+        {isComfyui && (
+          <Button icon={<Zap size={14} />} loading={testing} onClick={handleComfyTest}>
+            测试连接
+          </Button>
+        )}
+        {!isComfyui && textAdapter && firstTextVariant && (
           <Button icon={<Zap size={14} />} loading={testing} onClick={handleTest}>
             测试
           </Button>
         )}
       </Space.Compact>
-      {testResult === 'fail' && (
+      {(testResult === 'fail' || (isComfyui && testResult === 'ok')) && (
         <div className="mt-2">
-          <Text type="danger" className="text-xs break-all">{testMsg}</Text>
+          <Text type={testResult === 'ok' ? 'success' : 'danger'} className="text-xs break-all">{testMsg}</Text>
         </div>
       )}
     </Card>

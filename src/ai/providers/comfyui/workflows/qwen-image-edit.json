@@ -1,0 +1,62 @@
+{
+  "unet": {
+    "class_type": "UnetLoaderGGUF",
+    "inputs": { "unet_name": "qwen_image_2.1_Q8_0.gguf" }
+  },
+  "clip": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_8b_int8_convrot.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    }
+  },
+  "vae": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "qwen_image_2.1_vae_bf16.safetensors" }
+  },
+  "load_image": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "__IMAGE_1__" }
+  },
+  "encode": {
+    "class_type": "TextEncodeQwenImageEdit",
+    "inputs": {
+      "clip": ["clip", 0],
+      "prompt": "__PROMPT__",
+      "vae": ["vae", 0],
+      "image": ["load_image", 0]
+    }
+  },
+  "encode_neg": {
+    "class_type": "TextEncodeQwenImageEdit",
+    "inputs": { "clip": ["clip", 0], "prompt": "" }
+  },
+  "vae_encode": {
+    "class_type": "VAEEncode",
+    "inputs": { "pixels": ["load_image", 0], "vae": ["vae", 0] }
+  },
+  "sample": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["unet", 0],
+      "seed": "__SEED__",
+      "steps": "__STEPS__",
+      "cfg": 4,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": ["encode", 0],
+      "negative": ["encode_neg", 0],
+      "latent_image": ["vae_encode", 0],
+      "denoise": "__DENOISE__"
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["sample", 0], "vae": ["vae", 0] }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": { "images": ["decode", 0], "filename_prefix": "shotlib/qwen_edit" }
+  }
+}

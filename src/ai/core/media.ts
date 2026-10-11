@@ -42,7 +42,16 @@ export async function fetchRemoteBlob(url: string): Promise<Blob> {
   }
   const { proxyUrl } = await settingsRepo.get();
   if (!proxyUrl) throw new Error(`图片拉取失败(CORS 拦截且未配置代理): ${url.slice(0, 120)}`);
-  const resp = await fetch(buildProxyUrl(proxyUrl, url));
+  let resp: Response;
+  try {
+    resp = await fetch(buildProxyUrl(proxyUrl, url));
+  } catch (proxyError) {
+    throw new Error(
+      `图片拉取失败:直连被拦截且代理不可达(${proxyUrl}): ${
+        proxyError instanceof Error ? proxyError.message : String(proxyError)
+      }`,
+    );
+  }
   if (!resp.ok) throw new Error(`图片拉取失败: HTTP ${resp.status}`);
   return await resp.blob();
 }

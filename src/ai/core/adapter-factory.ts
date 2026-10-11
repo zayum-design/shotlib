@@ -27,6 +27,8 @@ import { AliyunImageAdapter } from '../providers/aliyun/aliyun-image.adapter';
 import { AliyunVideoAdapter } from '../providers/aliyun/aliyun-video.adapter';
 import { MiniMaxAdapter } from '../providers/minimaxi/minimaxi.adapter';
 import { MiniMaxVideoAdapter } from '../providers/minimaxi/minimaxi-video.adapter';
+import { ComfyUIImageAdapter } from '../providers/comfyui/comfyui-image.adapter';
+import { ComfyUIVideoAdapter } from '../providers/comfyui/comfyui-video.adapter';
 
 /** 惰性单例:首次访问时实例化 */
 let cache: {
@@ -47,11 +49,13 @@ function getCache() {
       image: new Map<string, BaseAdapter>([
         ['volcengine', new VolcEngineImageAdapter()],
         ['aliyun', new AliyunImageAdapter()],
+        ['comfyui', new ComfyUIImageAdapter()],
       ]),
       video: new Map<string, BaseAdapter>([
         ['volcengine', new VolcEngineVideoAdapter()],
         ['aliyun', new AliyunVideoAdapter()],
         ['minimaxi', new MiniMaxVideoAdapter()],
+        ['comfyui', new ComfyUIVideoAdapter()],
       ]),
     };
   }
