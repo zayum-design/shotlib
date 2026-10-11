@@ -157,6 +157,28 @@ function loadVideoNegatives(): string {
 }
 
 /**
+ * 把分镜提示词中的 {对白} 转换为口型/表情描述。
+ *
+ * 文生视频模型(MiniMax H3 / ComfyUI H3 等)无法根据提示词精确控制生成音频对白;
+ * 直接保留对白文本会让模型"幻想"出与文本不符的人声。未提供参考音频时,
+ * 把对白降级为"嘴型提示",避免生成错误对白。
+ *
+ * 转换示例:
+ *   {别……别报警。} → ；嘴唇翕动,口型默念"别……别报警。",不发出可辨人声
+ */
+function transformDialogueToLipSync(
+  prompt: string,
+  hasReferenceAudio?: boolean,
+): string {
+  if (hasReferenceAudio) return prompt;
+  return prompt.replace(/\{([^}]+)\}/g, (_, dialogue) => {
+    const text = String(dialogue).trim();
+    if (!text) return '';
+    return `；嘴唇翕动,口型默念"${text}",不发出可辨人声`;
+  });
+}
+
+/**
  * 为视频生成 prompt 追加反 AI 味系统指令与视频禁止项(全局统一出口统一追加)。
  * 各以指令前 20 字为指纹防重复追加(重试/上游已拼接时不叠加)。
  */
@@ -213,7 +235,11 @@ export async function generate(
 ): Promise<VideoProcessingResponse> {
   const { modelId, mode } = request;
   // 全局统一追加反 AI 味指令(覆盖全部 mode)
-  const prompt = withAntiAiDirective(request.prompt);
+  // 未提供参考音频时,把 {对白} 降级为嘴型提示,避免文生视频模型生成错误人声
+  const prompt = transformDialogueToLipSync(
+    withAntiAiDirective(request.prompt),
+    !!request.referenceAudioUrls?.length,
+  );
 
   let sdkRequest: UnifiedModelRequest;
 
@@ -317,7 +343,10 @@ export async function process(
     taskType: 'video',
     operation: 'generate',
     input: {
-      text: withAntiAiDirective(request.data.prompt || ''),
+      text: transformDialogueToLipSync(
+        withAntiAiDirective(request.data.prompt || ''),
+        !!(request.data.inputAudio || request.data.referenceAudioUrls?.length),
+      ),
       imageUrl: request.data.inputImage,
       videoUrl: request.data.inputVideo,
     },

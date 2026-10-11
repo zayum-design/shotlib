@@ -492,6 +492,19 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     updateEpisode(episode.id, updates);
   };
 
+  // 判断模型是否支持指定生成模式；兼容两种 supports 写法：
+  // - reference_image: 显式 reference_image=true，或至少支持 text_to_video（可降级为文生视频）
+  // - first_last_frame: 显式 first_frame=true && last_frame=true，或 first_last_frame=true（ComfyUI 简写）
+  const supportsVideoMode = (m: ModelConfig, mode: 'first_last_frame' | 'reference_image'): boolean => {
+    if (mode === 'first_last_frame') {
+      return (
+        m.supports?.first_last_frame === true ||
+        (m.supports?.first_frame === true && m.supports?.last_frame === true)
+      );
+    }
+    return m.supports?.reference_image === true || m.supports?.text_to_video === true;
+  };
+
   // 按当前生成模式过滤模型列表（依据模型配置 json 的 supports 字段，禁止硬编码）；
   // 项目片段时长上限为 30s 时，仅保留 model.json 中 duration.max >= 30 的长片段模型
   const currentGenerationMode = episode.videoGenerationMode ?? 'reference_image';
@@ -499,10 +512,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
   const filteredVideoModels = videoModels.filter((m) => {
     if (m.disabled) return false;
     if (episodeMaxDuration > 15 && ((m as any).duration?.max ?? 15) < episodeMaxDuration) return false;
-    if (currentGenerationMode === 'reference_image') {
-      return m.supports?.reference_image === true;
-    }
-    return m.supports?.first_frame === true && m.supports?.last_frame === true;
+    return supportsVideoMode(m, currentGenerationMode);
   });
 
   // 若当前模型不在过滤后的列表中，自动回退到第一个可用模型；否则保持之前选过的
@@ -515,10 +525,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     const nextFiltered = videoModels.filter((m) => {
       if (m.disabled) return false;
       if (episodeMaxDuration > 15 && ((m as any).duration?.max ?? 15) < episodeMaxDuration) return false;
-      if (mode === 'reference_image') {
-        return m.supports?.reference_image === true;
-      }
-      return m.supports?.first_frame === true && m.supports?.last_frame === true;
+      return supportsVideoMode(m, mode);
     });
     const nextModelId = nextFiltered.some((m) => m.id === episode.model)
       ? episode.model
