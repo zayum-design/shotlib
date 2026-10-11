@@ -30,6 +30,7 @@ import nanoBananaJson from '@/config/models/nano-banana.json';
 import sunoJson from '@/config/models/suno.json';
 import volcengineJson from '@/config/models/volcengine.json';
 import comfyuiJson from '@/config/models/comfyui.json';
+import { settingsRepo } from '@/storage/settingsRepo';
 
 /** model.json 变体段(与后端 VariantConfig 对齐,保留厂商专用字段) */
 export interface ProviderVariant {
@@ -123,8 +124,12 @@ export function getProviderProxyDefault(providerId: string): boolean {
 }
 
 /** 按变体 id 反查供应商 id(仅启用变体) */
-export function findProviderByVariantId(variantId: string): string | undefined {
+export function findProviderByVariantId(
+  variantId: string,
+  disabledProviders?: string[],
+): string | undefined {
   for (const config of PROVIDER_CONFIGS) {
+    if ((disabledProviders || []).includes(config.id)) continue;
     if (config.variants?.some((v) => v.id === variantId && v.enabled)) {
       return config.id;
     }
@@ -165,10 +170,13 @@ export function getProviderReasoningTokenBuffer(providerId: string): number {
   return getProviderConfig(providerId)?.config?.reasoningTokenBuffer ?? 0;
 }
 
-/** 全部启用变体 → ModelInfo[](替代 GET /models,已去积分字段) */
-export function getEnabledModelInfos(): ModelInfo[] {
+/** 全部启用变体 → ModelInfo[](替代 GET /models,已去积分字段)
+ * disabledProviders: 用户关闭的厂商(providerId 列表),从结果中过滤掉
+ */
+export function getEnabledModelInfos(disabledProviders?: string[]): ModelInfo[] {
   const result: ModelInfo[] = [];
   for (const config of PROVIDER_CONFIGS) {
+    if ((disabledProviders || []).includes(config.id)) continue;
     for (const variant of config.variants || []) {
       if (!variant.enabled) continue;
       result.push({
@@ -195,11 +203,15 @@ export function getEnabledModelInfos(): ModelInfo[] {
 /** 按类型取启用模型 */
 export function getModelsByType(
   type: ModelInfo['type'],
+  disabledProviders?: string[],
 ): ModelInfo[] {
-  return getEnabledModelInfos().filter((m) => m.type === type);
+  return getEnabledModelInfos(disabledProviders).filter((m) => m.type === type);
 }
 
 /** 指定类型的默认模型(第一个启用变体,对齐后端 ModelMetadataService.getDefaultModelId) */
-export function getDefaultModelId(type: ModelInfo['type']): string {
-  return getModelsByType(type)[0]?.id || '';
+export function getDefaultModelId(
+  type: ModelInfo['type'],
+  disabledProviders?: string[],
+): string {
+  return getModelsByType(type, disabledProviders)[0]?.id || '';
 }

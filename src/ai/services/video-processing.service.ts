@@ -21,10 +21,10 @@
  * - 差异:开源版恒为「提交即返回 taskId,由上层轮询器查询」的 CLIENT_SIDE 语义,
  *   替代后端 SERVER_SIDE 同步等待;queryTaskStatus 为单次查询(轮询由前端驱动)
  */
-import { findProviderByVariantId } from '@/ai/core/model-registry';
-import { getDefaultModelId, getVariantConfig } from '@/ai/core/model-registry';
+import { findProviderByVariantId, getDefaultModelId, getVariantConfig } from '@/ai/core/model-registry';
 import { submitVideoTask, getVideoAdapter } from '@/ai/core/task-runner';
 import type { VideoTaskHandle } from '@/ai/core/task-runner';
+import { settingsRepo } from '@/storage/settingsRepo';
 import type { UnifiedModelRequest, TaskQueryResponse } from '@/ai/core/types';
 import { ModelException } from '@/ai/core/exceptions';
 import { promptLoader } from '@/ai/prompts/prompt-loader';
@@ -378,11 +378,14 @@ export async function queryTaskStatus(
   modelId?: string,
 ): Promise<Record<string, any>> {
   const actualModelId = modelId || getDefaultModelId('video');
-  const providerId = findProviderByVariantId(actualModelId);
+  const s = await settingsRepo.get();
+  const providerId = findProviderByVariantId(actualModelId, s.disabledProviders || []);
   if (!providerId) {
+    const rawProvider = findProviderByVariantId(actualModelId);
+    const disabled = !!rawProvider && (s.disabledProviders || []).includes(rawProvider);
     throw new ModelException(
-      `未知模型: ${actualModelId}`,
-      'MODEL_NOT_FOUND',
+      disabled ? `模型 ${actualModelId} 所属厂商已禁用` : `未知模型: ${actualModelId}`,
+      disabled ? 'PROVIDER_DISABLED' : 'MODEL_NOT_FOUND',
       400,
       false,
     );

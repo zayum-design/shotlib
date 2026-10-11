@@ -54,6 +54,12 @@ export interface AppSettings {
   defaultModels: { text?: string; image?: string; video?: string; voice?: string };
   /** 是否在提交模型前显示 JSON 预览 dialog(默认 false:直接提交) */
   showPreviewRequestDialog?: boolean;
+  /**
+   * 用户禁用的厂商(providerId):设置页开关关闭后,
+   * 该厂商的所有变体不再出现在模型下拉框与适配器路由中。
+   * 缺省视为启用(undefined 即全启用)。
+   */
+  disabledProviders?: string[];
   /** 对象存储配置(配置后生成的图片立即上传,持久公网 URL 供后续生成引用) */
   oss?: OssConfig;
 }
@@ -63,6 +69,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   proxyUrl: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEFAULT_PROXY_URL) || '',
   providerProxyMode: {},
   defaultModels: {},
+  disabledProviders: [],
 };
 
 let cache: AppSettings | undefined;
@@ -90,6 +97,20 @@ export const settingsRepo = {
   async setApiKey(providerId: string, key: string): Promise<void> {
     const s = await settingsRepo.get();
     await settingsRepo.save({ apiKeys: { ...s.apiKeys, [providerId]: key } });
+  },
+
+  /** 该厂商是否被用户启用(设置页开关);缺省视为启用 */
+  async isProviderEnabled(providerId: string): Promise<boolean> {
+    const s = await settingsRepo.get();
+    return !(s.disabledProviders || []).includes(providerId);
+  },
+
+  /** 切换厂商启用状态:开启时从 disabledProviders 移除,关闭时加入 */
+  async setProviderEnabled(providerId: string, enabled: boolean): Promise<void> {
+    const s = await settingsRepo.get();
+    const current = (s.disabledProviders || []).filter((id) => id !== providerId);
+    if (!enabled) current.push(providerId);
+    await settingsRepo.save({ disabledProviders: current });
   },
 
   /** 该厂商是否走代理:用户覆盖 > 默认(调用方传入厂商默认建议) */

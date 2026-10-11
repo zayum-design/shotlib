@@ -206,6 +206,29 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
     }
   }, [config.id, value, textAdapter, firstTextVariant, message]);
 
+  /** 厂商启停开关 */
+  const [enabled, setEnabled] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    settingsRepo.isProviderEnabled(config.id).then((ok) => {
+      if (alive) setEnabled(ok);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [config.id]);
+
+  const handleToggleEnabled = useCallback(async (checked: boolean) => {
+    setEnabled(checked);
+    try {
+      await settingsRepo.setProviderEnabled(config.id, checked);
+      message.success(`${checked ? '启用' : '禁用'} ${config.name}`);
+    } catch (error) {
+      setEnabled(!checked);
+      message.error((error as Error).message || '切换失败');
+    }
+  }, [config.id, config.name, message]);
+
   return (
     <Card size="small" styles={{ body: { padding: '12px 16px' } }}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -223,6 +246,13 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
             </div>
           )}
         </div>
+        <Switch
+          checked={enabled}
+          onChange={handleToggleEnabled}
+          checkedChildren="启用"
+          unCheckedChildren="禁用"
+          size="small"
+        />
         {config.apiDocUrl && (
           <a
             href={config.apiDocUrl}
@@ -488,12 +518,14 @@ function ProxySection() {
 function DefaultModelsSection() {
   const [defaults, setDefaults] = useState<AppSettings['defaultModels']>({});
   const [loaded, setLoaded] = useState(false);
+  const [disabledProviders, setDisabledProviders] = useState<string[]>([]);
 
   useEffect(() => {
     let alive = true;
     settingsRepo.get().then((s) => {
       if (!alive) return;
       setDefaults(s.defaultModels || {});
+      setDisabledProviders(s.disabledProviders || []);
       setLoaded(true);
     });
     return () => {
@@ -524,9 +556,9 @@ function DefaultModelsSection() {
     [],
   );
 
-  const textModels = useMemo(() => getModelsByType('text'), []);
-  const imageModels = useMemo(() => getModelsByType('image'), []);
-  const videoModels = useMemo(() => getModelsByType('video'), []);
+  const textModels = useMemo(() => getModelsByType('text', disabledProviders), [disabledProviders]);
+  const imageModels = useMemo(() => getModelsByType('image', disabledProviders), [disabledProviders]);
+  const videoModels = useMemo(() => getModelsByType('video', disabledProviders), [disabledProviders]);
 
   if (!loaded) return null;
 

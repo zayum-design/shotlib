@@ -21,6 +21,7 @@
  */
 import { createAdapter } from './adapter-factory';
 import { findProviderByVariantId } from './model-registry';
+import { settingsRepo } from '@/storage/settingsRepo';
 import type {
   BaseAdapter,
 } from './base-adapter';
@@ -120,11 +121,15 @@ export async function submitVideoTask(
   request: UnifiedModelRequest,
 ): Promise<VideoTaskHandle> {
   const modelId = request.modelId;
-  const providerId = findProviderByVariantId(modelId);
+  const s = await settingsRepo.get();
+  const providerId = findProviderByVariantId(modelId, s.disabledProviders || []);
   if (!providerId) {
+    const disabled = (s.disabledProviders || []).includes(
+      findProviderByVariantId(modelId) || '',
+    );
     throw new ModelException(
-      `未知模型: ${modelId}`,
-      'MODEL_NOT_FOUND',
+      disabled ? `模型 ${modelId} 所属厂商已禁用` : `未知模型: ${modelId}`,
+      disabled ? 'PROVIDER_DISABLED' : 'MODEL_NOT_FOUND',
       400,
       false,
     );
@@ -200,7 +205,8 @@ export async function runVideoTask(
   request: UnifiedModelRequest,
   options: PollOptions = {},
 ): Promise<VideoTaskResult> {
-  const providerId = findProviderByVariantId(request.modelId);
+  const s = await settingsRepo.get();
+  const providerId = findProviderByVariantId(request.modelId, s.disabledProviders || []);
   const adapter = getVideoAdapter(providerId || '');
   const handle: VideoTaskHandle = {
     providerId: providerId || '',

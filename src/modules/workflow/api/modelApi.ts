@@ -18,6 +18,7 @@
  * 原版从服务端拉取模型列表;开源版改为读取内置 model.json 配置(model-registry)。
  */
 import { getEnabledModelInfos } from '@/ai/core/model-registry';
+import { settingsRepo } from '@/storage/settingsRepo';
 import type { ApiResponse } from './types';
 
 export interface DurationConfig {
@@ -75,6 +76,8 @@ export interface GetModelsResponse {
  * 获取可用模型列表(内置配置)
  */
 export async function getModelsApi(): Promise<ApiResponse<GetModelsResponse>> {
-  const models = getEnabledModelInfos() as unknown as ModelInfo[];
+  const s = await settingsRepo.get();
+  const disabled = s.disabledProviders || [];
+  const models = getEnabledModelInfos(disabled) as unknown as ModelInfo[];
   return { success: true, data: { models, sceneImageAspectRatio: null } };
 }

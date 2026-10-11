@@ -18,6 +18,7 @@
  */
 import type { BaseAdapter } from './base-adapter';
 import { findProviderByVariantId } from './model-registry';
+import { settingsRepo } from '@/storage/settingsRepo';
 import { DeepSeekAdapter } from '../providers/deepseek/deepseek.adapter';
 import { MoonshotAdapter } from '../providers/moonshot/moonshot.adapter';
 import { VolcEngineTextAdapter } from '../providers/volcengine/volcengine-text.adapter';
@@ -77,4 +78,11 @@ export function createAdapterForModel(
 ): BaseAdapter | undefined {
   const providerId = findProviderByVariantId(modelId);
   return providerId ? createAdapter(providerId, taskType) : undefined;
+}
+
+/** 检查模型对应的厂商是否被用户启用(设置页开关) */
+export async function isModelProviderEnabled(modelId: string): Promise<boolean> {
+  const s = await settingsRepo.get();
+  const providerId = findProviderByVariantId(modelId, s.disabledProviders || []);
+  return !!providerId;
 }
