@@ -59,9 +59,31 @@ export const imageRepo = {
   /**
    * 为记录解析可展示 URL:
    * 1. 优先 OSS 持久地址(data.ossUrl)——数据层与显示层统一,跨刷新/跨设备有效
-   * 2. 无 OSS 时本地 Blob → objectURL(仅当前会话有效,未配置 OSS 时的兜底)
-   * 3. 无 Blob 用 originalUrl/remoteUrl
+   * 2. 无 OSS 时优先稳定远程 URL(remoteUrl/originalUrl):自建 ComfyUI /view 等地址
+   *    不会短期过期,跨刷新/跨会话仍可用。
+   * 3. 短期签名 URL(火山/阿里云等带签名过期参数)则本地 Blob → objectURL,
+   *    避免签名过期后无法显示;objectURL 仅当前会话有效。
+   * 4. 无 Blob 仍 fallback 到 originalUrl/remoteUrl
    */
+  /**
+   * 判断远程 URL 是否为稳定地址(非短期签名 URL)。
+   * 含 x-amz-expires / OSSAccessKeyId / x-amz-algorithm 等参数的视为短期签名 URL。
+   */
+  isStableRemoteUrl(url?: string): boolean {
+    if (!url || !/^https?:\/\//.test(url)) return false;
+    const lower = url.toLowerCase();
+    const shortTermMarkers = [
+      'x-amz-expires',
+      'x-oss-expires',
+      'ossaccesskeyid',
+      'x-amz-algorithm',
+      'x-amz-credential',
+      'x-amz-signature',
+      'security-token=',
+      'expires=',
+    ];
+    return !shortTermMarkers.some((m) => lower.includes(m));
+  },
   async ensureUrl(assetId: string, record: ImageAssetRecord): Promise<string | undefined> {
     const cached = objectUrlCache.get(assetId);
     if (cached) return cached;
@@ -70,6 +92,15 @@ export const imageRepo = {
       objectUrlCache.set(assetId, ossUrl);
       return ossUrl;
     }
+
+    // 稳定远程 URL 优先(自建 ComfyUI /view 等),跨刷新有效
+    const stableRemote = [record.remoteUrl, record.originalUrl, record.data?.original_url]
+      .find((u) => this.isStableRemoteUrl(u));
+    if (stableRemote) {
+      objectUrlCache.set(assetId, stableRemote);
+      return stableRemote;
+    }
+
     let url: string | undefined;
     if (record.blob) {
       url = URL.createObjectURL(record.blob);
