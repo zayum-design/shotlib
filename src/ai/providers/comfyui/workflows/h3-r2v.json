@@ -34,7 +34,7 @@
       "width": "__WIDTH__",
       "height": "__HEIGHT__",
       "length": "__LENGTH__",
-      "ref_image_size": "match",
+      "ref_image_size": "max",
       "vae": ["vae", 0],
       "audio_vae": ["audio_vae", 0]
     }
