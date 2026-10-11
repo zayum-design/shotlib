@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import { formatVolcengineVideoPrompt } from './volcengine/video-prompt-formatter';
+import { formatComfyUIVideoPrompt } from './comfyui/video-prompt-formatter';
 import type { Character, Scene, Shot } from '@/shared/types/index';
 
 type VideoPromptFormatter = (
@@ -33,6 +34,7 @@ type VideoPromptFormatter = (
  */
 const FORMATTERS: Record<string, VideoPromptFormatter> = {
   volcengine: formatVolcengineVideoPrompt,
+  comfyui: formatComfyUIVideoPrompt,
 };
 
 /**
