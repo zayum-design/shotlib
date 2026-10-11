@@ -825,13 +825,13 @@ export function buildUniversalReferenceRequest(
       parts.push(`[ref:costume:${costumeNum}]`);
     }
     const char = characters.find((c) => c.id === charId);
-    // 音色提示词仅在提供参考音频(音频驱动对口型)时才注入；
-    // 无声视频下声音描述是噪音,会诱导模型生成无关人声/杂音,且浪费提示词长度。
+    // 音色提示词只要存在就输出（纯文本描述，不依赖是否选择音色）；
+    // [ref:audio:N] 引用仍要求已选择音色且模型支持音频参考
     if (char?.voicePrompt) {
+      let voiceDesc = char.voicePrompt;
       const audioNum = charIdToAudioNum.get(charId);
-      if (audioNum) {
-        parts.push(`${char.voicePrompt}，[ref:audio:${audioNum}]`);
-      }
+      if (audioNum) { voiceDesc += `，[ref:audio:${audioNum}]`; }
+      parts.push(voiceDesc);
     }
     return `${name}（${parts.join('，')}）`;
   };
