@@ -37,6 +37,7 @@ import {
  } from './shot-translation.utils';
 import { promptLoader } from '@/ai/prompts/prompt-loader';
 import { lyricsGenerator } from './lyrics-generation.service';
+import { splitScriptByActs, countBeats } from './script-act.utils';
 
 export class AIModelService {
   // 前端版无 DI:直接引用模块级单例
@@ -732,64 +733,52 @@ export class AIModelService {
     console.log(`[AIModelService] 使用模型 ${modelId} 生成片段`);
 
     try {
-      // 从模型目录加载提示词
-      const systemPrompt = this.buildEpisodeGenerationPrompt(modelId, options);
+      // 按幕拆分剧本，避免单次输出整剧 JSON 导致 token 截断
+      const acts = splitScriptByActs(options.script);
+      const totalBeats = countBeats(options.script);
+      console.log(
+        `[AIModelService] 剧本拆分幕数: ${acts.length}, 片段节拍数: ${totalBeats}`,
+      );
 
-      // 构建请求参数
-      // maxTokens 提升至 32000：长剧本（8-15 个片段节拍）的完整分镜 JSON（每 shot 含 prompt/referencePrompt/首尾帧/首尾帧视频提示词）
-      // 估算需 24000-40000 token，12000 会截断后半段 episode 与台词。各 adapter 会按模型实际上限自动兜底（如 deepseek 384K）。
-      const parameters: Record<string, any> = {
-        temperature: 0.7,
-        maxTokens: 32000,
-      };
+      let allEpisodes: any[] = [];
+      let previousEndingState = options.previousEndingState || '';
 
-      const isVolcEngineModel =
-        modelId.includes('volcengine') || modelId.includes('doubao');
-      if (!isVolcEngineModel) {
-        parameters.responseFormat = { type: 'json_object' };
-      } else {
+      for (const act of acts) {
         console.log(
-          `[AIModelService] 火山引擎模型 ${modelId} 不支持 response_format 参数，依赖提示词要求 JSON 格式`,
+          `[AIModelService] 开始生成第 ${act.actNumber}/${acts.length} 幕片段, previousEndingState长度=${previousEndingState.length}`,
         );
+
+        const actEpisodes = await this.generateEpisodesForAct(
+          modelId,
+          options,
+          act,
+          acts.length,
+          previousEndingState,
+        );
+
+        if (!actEpisodes || actEpisodes.length === 0) {
+          throw new Error(`第 ${act.actNumber} 幕未生成任何片段，请重试`);
+        }
+
+        allEpisodes = allEpisodes.concat(actEpisodes);
+
+        // 为下一幕准备结尾状态（连续性锚点）
+        const lastEpisode = actEpisodes[actEpisodes.length - 1];
+        previousEndingState = this.extractActEndingState(lastEpisode);
       }
 
-      // 使用统一SDK
-      // timeout 600s：maxTokens=32000 的非流式长文生成（deepseek 约 40-60 tok/s）远超 adapter 默认 180s，
-      // 不加大超时会导致主模型必超时、12 个 fallback 串行空转（生产事故：任务跑 15 分钟全失败，前端 5 分钟已报"轮询超时"）
-      const response = await this.modelSDK.process({
-        modelId,
-        taskType: 'text',
-        operation: 'generate',
-        input: { text: `剧本：\n${options.script}` },
-        systemPrompt,
-        parameters,
-        options: { timeout: 600000 },
-      });
-
-      if (!response.success) {
-        throw new Error(response.error?.message || '生成片段失败');
+      // 覆盖率校验：生成的 episode 数不应明显少于剧本节拍数
+      if (totalBeats > 0 && allEpisodes.length < Math.ceil(totalBeats * 0.7)) {
+        console.error(
+          `[AIModelService] 覆盖率不足: 节拍数=${totalBeats}, 生成片段数=${allEpisodes.length}`,
+        );
+        throw new Error(
+          `生成结果不完整：剧本共 ${totalBeats} 个片段节拍，但只生成 ${allEpisodes.length} 个片段，请重试`,
+        );
       }
 
       // 生成时间戳
       const timestamp = Date.now();
-
-      // 解析返回的 JSON 数据
-      const parsedData = this.parseEpisodeGenerationResponse(
-        response.data.content || '',
-      );
-      console.log(
-        `[AIModelService] 解析后 episodes 数量: ${parsedData.episodes?.length ?? 0}`,
-      );
-      if (parsedData.episodes?.length > 0) {
-        console.log(
-          `[AIModelService] 第一个 episode 字段:`,
-          Object.keys(parsedData.episodes[0]),
-        );
-        console.log(
-          `[AIModelService] 第一个 episode shots 数量:`,
-          parsedData.episodes[0].shots?.length ?? 0,
-        );
-      }
 
       // 转换字符和场景信息
       const characterInfos: CharacterInfo[] = (options.characters || []).map(
@@ -813,13 +802,15 @@ export class AIModelService {
       }));
 
       const episodes = this.enrichEpisodes(
-        parsedData.episodes || [],
+        allEpisodes,
         timestamp,
         characterInfos,
         sceneInfos,
         options.maxEpisodeDuration === 30 ? 30 : 15,
       );
-      console.log(`[AIModelService] enrichEpisodes 后数量: ${episodes.length}`);
+      console.log(
+        `[AIModelService] enrichEpisodes 后数量: ${episodes.length}, 幕数: ${acts.length}`,
+      );
 
       return episodes;
     } catch (error) {
@@ -830,11 +821,116 @@ export class AIModelService {
     }
   }
 
+  /**
+   * 生成单幕的 episodes。
+   * 重试一次，若仍失败则抛错。
+   */
+  private async generateEpisodesForAct(
+    modelId: string,
+    options: EpisodeGenerationOptions,
+    act: { actNumber: number; title: string; content: string },
+    totalActs: number,
+    previousEndingState: string,
+  ): Promise<any[]> {
+    const doGenerate = async (): Promise<any[]> => {
+      const systemPrompt = this.buildEpisodeGenerationPrompt(
+        modelId,
+        options,
+        act,
+        totalActs,
+        previousEndingState,
+      );
+
+      // 单幕输出通常远小于整剧，maxTokens 适当降低以提升响应速度
+      const parameters: Record<string, any> = {
+        temperature: 0.7,
+        maxTokens: 16000,
+      };
+
+      const isVolcEngineModel =
+        modelId.includes('volcengine') || modelId.includes('doubao');
+      if (!isVolcEngineModel) {
+        parameters.responseFormat = { type: 'json_object' };
+      } else {
+        console.log(
+          `[AIModelService] 火山引擎模型 ${modelId} 不支持 response_format 参数，依赖提示词要求 JSON 格式`,
+        );
+      }
+
+      const response = await this.modelSDK.process({
+        modelId,
+        taskType: 'text',
+        operation: 'generate',
+        input: { text: `剧本：\n${act.content}` },
+        systemPrompt,
+        parameters,
+        options: { timeout: 600000 },
+      });
+
+      if (!response.success) {
+        throw new Error(response.error?.message || '生成片段失败');
+      }
+
+      const parsedData = this.parseEpisodeGenerationResponse(
+        response.data.content || '',
+      );
+
+      // 截断检测：finish_reason 为 length 时即使 content 非空也视为截断
+      const extra = (response.data as any)?.extra;
+      const finishReason = extra?.finishReason;
+      const isTruncated =
+        extra?.truncated === true ||
+        finishReason === 'length' ||
+        parsedData.__repaired === true;
+      if (isTruncated) {
+        console.error(
+          `[AIModelService] 第 ${act.actNumber} 幕输出可能被截断 (finish_reason=${finishReason}, repaired=${parsedData.__repaired})`,
+        );
+        throw new Error(
+          `第 ${act.actNumber} 幕生成结果不完整（输出长度达到上限），请重试`,
+        );
+      }
+
+      return parsedData.episodes || [];
+    };
+
+    try {
+      return await doGenerate();
+    } catch (error) {
+      console.warn(
+        `[AIModelService] 第 ${act.actNumber} 幕首次生成失败，准备重试一次:`,
+        error instanceof Error ? error.message : error,
+      );
+      return await doGenerate();
+    }
+  }
+
+  /**
+   * 从单幕最后一个 episode 提取结尾状态文本，供下一幕作为 previousEndingState 使用。
+   */
+  private extractActEndingState(lastEpisode: any): string {
+    if (!lastEpisode || typeof lastEpisode !== 'object') return '';
+    const parts: string[] = [];
+    if (lastEpisode.title) parts.push(`上一幕末片段「${lastEpisode.title}」`);
+    if (lastEpisode.lastFramePrompt) {
+      parts.push(`结尾定格画面：${lastEpisode.lastFramePrompt}`);
+    } else if (Array.isArray(lastEpisode.shots) && lastEpisode.shots.length > 0) {
+      const lastShot = lastEpisode.shots[lastEpisode.shots.length - 1];
+      if (lastShot?.prompt) parts.push(`结尾镜头：${lastShot.prompt}`);
+    }
+    return parts.join('。');
+  }
+
   private buildEpisodeGenerationPrompt(
     modelId: string,
     options: EpisodeGenerationOptions,
+    act?: { actNumber: number; title: string; content: string },
+    totalActs?: number,
+    actPreviousEndingState?: string,
   ): string {
-    const { script, characters, scenes, props } = options;
+    const { characters, scenes, props } = options;
+    // 若按幕生成，使用当前幕内容；否则使用完整剧本
+    const script = act ? act.content : options.script;
 
     // 格式化角色列表
     const charactersText =
@@ -868,29 +964,42 @@ export class AIModelService {
 
     // 渲染模板
     const rendered = this.promptLoader.renderTemplate(template, {
-      script: script, // 完整剧本
+      script: script, // 当前幕剧本或完整剧本
       characters: charactersText,
       scenes: scenesText,
       props: propsText,
-      // 上集结尾状态与事件分桶：首集/未提供时传空串，模板的 {{#if}} 条件块自动移除
-      previousEndingState: options.previousEndingState || '',
+      // 上集/上一幕结尾状态：首集/首幕/未提供时传空串，模板的 {{#if}} 条件块自动移除
+      previousEndingState: actPreviousEndingState || options.previousEndingState || '',
       eventBuckets: options.eventBuckets || '',
     });
 
-    // 片段时长规则叠加层：以请求注入的上限为准（15s 或 30s,30s 仅长片段模型如 seedance2.5 支持），
-    // 覆盖模板中的默认时长约束
+    // 片段时长规则叠加层
     const maxTotal = options.maxEpisodeDuration === 30 ? 30 : 15;
     const rhythm =
       maxTotal >= 30
         ? '0-6s 建立 / 6-12s 引入 / 12-18s 发展 / 18-24s 高潮 / 24-30s 落点留钩'
         : '0-3s 建立 / 3-6s 引入 / 6-9s 发展 / 9-12s 高潮 / 12-15s 落点留钩';
-    const durationRule = `
+    let durationRule = `
 
 【本次生成的片段时长规则（优先级高于模板中任何默认时长约束）】
 - 每个 episode 内所有 shots 的 duration 之和严禁超过 ${maxTotal} 秒；
 - 单个 shot duration ≥ 3 秒且 ≤ 10 秒；每个 episode 2-5 个 shot；
 - 每个 episode 的 shots 节奏结构按「${rhythm}」推进；
 - 对白字数与时长适配（正常语速约 2.5 字/秒），输出前逐集验算 duration 之和 ≤ ${maxTotal}。`;
+
+    // 按幕生成时，追加幕上下文说明
+    if (act && totalActs && totalActs > 1) {
+      const isFirstAct = act.actNumber === 1;
+      const isLastAct = act.actNumber === totalActs;
+      const actContext = `
+
+【本次生成范围：第 ${act.actNumber}/${totalActs} 幕】
+- 本次只根据上方【剧本正文】中「${act.title}」部分生成 episode，不要生成其他幕的内容。
+- 必须覆盖本幕中所有标记为 【片段节拍N】 的节拍，禁止跳过或压缩。
+- 本幕第一个 episode 的首帧必须从上一幕结尾状态自然接续（同一场景/同一时间/人物位置姿势一致）。
+- ${isLastAct ? '本幕是最后一幕，最后一个 episode 可以收束或留钩。' : '本幕非最后一幕，除最后一个 episode 外，其余末镜请以「延续锚点」收尾，便于下一幕接续。'}`;
+      durationRule += actContext;
+    }
 
     return rendered + durationRule;
   }
@@ -934,6 +1043,8 @@ export class AIModelService {
           console.log(
             `[AIModelService] 修复后 JSON.parse 成功, episodes 类型: ${typeof parsed.episodes}, 是否为数组: ${Array.isArray(parsed.episodes)}`,
           );
+          // 标记本次结果经过修复，可能已被截断，上层应结合覆盖率校验决定是否接受
+          parsed.__repaired = true;
           return parsed;
         } catch (repairError) {
           console.error(

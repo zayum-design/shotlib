@@ -200,10 +200,28 @@ export class VolcEngineTextAdapter extends BaseAdapter {
         `[VolcEngineTextAdapter] 正文为空(推理链耗尽 max_tokens?)model=${metadata?.modelId}, finish_reason=${choice?.finish_reason}, reasoning长度=${reasoningContent.length}`,
       );
     }
+
+    // 截断检测：finish_reason 为 length 时即使 content 非空也视为输出被截断
+    const isTruncated = choice?.finish_reason === 'length';
+    if (isTruncated) {
+      console.error(
+        `[VolcEngineTextAdapter] 输出被截断: finish_reason=length, content长度=${content.length}`,
+      );
+    }
+
     const usage = raw.usage;
 
+    const extra: Record<string, unknown> = {};
+    if (isTruncated) {
+      extra.truncated = true;
+      extra.finishReason = choice?.finish_reason;
+    }
+
     return this.buildSuccessResponse(
-      { content },
+      {
+        content,
+        extra: Object.keys(extra).length > 0 ? extra : undefined,
+      },
       {
         modelId: metadata?.modelId || this.config.modelId,
         processingTime: metadata?.processingTime || 0,

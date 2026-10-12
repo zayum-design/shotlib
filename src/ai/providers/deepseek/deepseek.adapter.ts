@@ -247,6 +247,14 @@ export class DeepSeekAdapter extends BaseAdapter {
       );
     }
 
+    // 截断检测：finish_reason 为 length 时即使 content 非空也视为输出被截断
+    const isTruncated = choice?.finish_reason === 'length';
+    if (isTruncated) {
+      console.error(
+        `[DeepSeekAdapter] 输出被截断: finish_reason=length, content长度=${content.length}`,
+      );
+    }
+
     // 构建 token 使用量(包含 DeepSeek 特有字段)
     const tokenInfo: Record<string, number> | undefined = usage
       ? {
@@ -269,6 +277,10 @@ export class DeepSeekAdapter extends BaseAdapter {
     }
     if (usage?.prompt_cache_miss_tokens !== undefined) {
       extra.promptCacheMissTokens = usage.prompt_cache_miss_tokens;
+    }
+    if (isTruncated) {
+      extra.truncated = true;
+      extra.finishReason = choice?.finish_reason;
     }
 
     return this.buildSuccessResponse(

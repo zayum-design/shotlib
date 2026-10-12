@@ -37,6 +37,7 @@ import {
 } from '@/ai/services/video-processing.service';
 import { getDefaultModelId, getVariantConfig } from '@/ai/core/model-registry';
 import { episodeRepo } from '@/storage/episodeRepo';
+import { countBeats } from '@/ai/services/script-act.utils';
 
 function getProjectId(): string | undefined {
   // workflow 页面取 workflowStore；instant 页面不设置 workflowStore，
@@ -62,14 +63,45 @@ export interface GenerateEpisodesResponse {
 /**
  * 从 workflowStore 提取当前分集的事件分桶文本（事件密度防火墙）。
  * 无纲要数据时返回 undefined，后端模板条件块自动移除。
+ *
+ * 安全约束：
+ * - 找不到与当前 episodeNumber 匹配的 outline 时，不再回退到 outlines[0]，
+ *   避免把其他分集/其他幕的事件限制错误注入当前生成。
+ * - 若选中的 outline.thisEpisode 事件数明显少于剧本中的片段节拍数，
+ *   认为该防火墙会误伤后续幕，直接返回 undefined 让模板移除该条件块。
  */
-function buildEpisodeOutlineText(episodeNumber?: number): string | undefined {
+function buildEpisodeOutlineText(
+  script: string,
+  episodeNumber?: number,
+): string | undefined {
   const outlines = useWorkflowStore.getState().episodeOutlines;
   if (!Array.isArray(outlines) || outlines.length === 0) return undefined;
-  const outline =
-    outlines.find((o) => o.episodeNumber === episodeNumber) ?? outlines[0];
-  const buckets = outline?.eventBuckets;
+
+  const outline = episodeNumber
+    ? outlines.find((o) => o.episodeNumber === episodeNumber)
+    : outlines[0];
+  if (!outline) {
+    console.warn(
+      `[buildEpisodeOutlineText] 未找到 episodeNumber=${episodeNumber} 的叙事纲要，跳过事件分桶`,
+    );
+    return undefined;
+  }
+
+  const buckets = outline.eventBuckets;
   if (!buckets) return undefined;
+
+  const beatCount = countBeats(script);
+  const thisEpisodeCount = Array.isArray(buckets.thisEpisode)
+    ? buckets.thisEpisode.length
+    : 0;
+  // 若本集可演事件数不足剧本节拍的 70%，认为防火墙会截断后续幕剧情，放弃注入
+  if (beatCount > 0 && thisEpisodeCount > 0 && thisEpisodeCount < Math.ceil(beatCount * 0.7)) {
+    console.warn(
+      `[buildEpisodeOutlineText] 叙事纲要 thisEpisode(${thisEpisodeCount}) 未覆盖剧本节拍(${beatCount})，跳过事件分桶避免误伤`,
+    );
+    return undefined;
+  }
+
   const lines: string[] = [];
   const push = (label: string, items?: string[]) => {
     if (Array.isArray(items) && items.length > 0) {
@@ -204,7 +236,7 @@ export async function generateEpisodesApi(
         props: filteredProps,
         previousEndingState,
         // 事件分桶：事件密度防火墙，防止提前表演未来情节
-        eventBuckets: buildEpisodeOutlineText(episodeNumber) || '',
+        eventBuckets: buildEpisodeOutlineText(script, episodeNumber) || '',
         // 片段时长上限(秒):15 或 30,30s 仅长片段模型(如 seedance2.5)支持
         maxEpisodeDuration,
       },
