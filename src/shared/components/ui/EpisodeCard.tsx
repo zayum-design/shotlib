@@ -16,7 +16,7 @@ import React, { useState, useMemo } from 'react';
 import { Card, Button, Input, Spin, Tooltip, Modal, Slider, Checkbox, Popconfirm, Divider, Select, Tabs, Radio } from 'antd';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { Edit3, Play, Video, Plus, Trash2, Film, Image as ImageIcon, ZoomIn, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
-import type { Episode, CameraMovement, ShotType, CameraAngle, LightingType, MoodType } from '../../types';
+import type { Episode, CameraMovement, ShotType, CameraAngle, LightingType, MoodType, ModelConfig } from '../../types';
 import { CAMERA_MOVEMENTS, SHOT_TYPES, CAMERA_ANGLES, LIGHTING_TYPES, MOOD_TYPES } from '../../types';
 import { useWorkflowStore } from '@/modules/workflow/stores/workflowStore';
 import { useResolvedImageUrls } from '@/modules/workflow/hooks/useWorkflowImageResolver';
@@ -499,7 +499,7 @@ export const EpisodeCard: React.FC<EpisodeCardProps> = ({ episode }) => {
     // 根据模型能力自动切换生成方式：仅支持参考图 → 全能参考；仅支持首尾帧 → 首尾帧。
     // 两者都支持时保持当前生成方式不变。
     const supportsReferenceImage = !!newModel?.supports?.reference_image;
-    const supportsFirstLast = supportsVideoMode(newModel, 'first_last_frame');
+    const supportsFirstLast = !!newModel && supportsVideoMode(newModel, 'first_last_frame');
     const updates: Partial<Episode> = { model, videoDuration: newVideoDuration };
     if (supportsReferenceImage && !supportsFirstLast) {
       updates.videoGenerationMode = 'reference_image';
