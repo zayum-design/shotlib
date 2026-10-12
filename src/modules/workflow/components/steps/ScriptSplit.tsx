@@ -60,6 +60,9 @@ export const ScriptSplit: React.FC<ScriptSplitProps> = ({
     videoModels,
     episodeMaxDuration,
     setEpisodeMaxDuration,
+    textModel,
+    textModels,
+    setTextModel,
   } = useWorkflowStore();
 
   const [activeTab, setActiveTab] = useState('characters');
@@ -585,6 +588,24 @@ export const ScriptSplit: React.FC<ScriptSplitProps> = ({
                     ]}
                   />
                 </Tooltip>
+                {/* 生成片段所用的文本模型（片段分镜由文本模型生成） */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-text-muted">文本模型:</span>
+                  <Select
+                    value={textModel}
+                    onChange={setTextModel}
+                    options={textModels.map((m) => ({
+                      value: m.id,
+                      label: (
+                        <Tooltip title={m.description}>
+                          <span>{m.name}</span>
+                        </Tooltip>
+                      ),
+                      disabled: m.disabled,
+                    }))}
+                    size="small" popupMatchSelectWidth={false} />
+                  <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+                </div>
                 <Button
                   type="primary"
                   size="large"

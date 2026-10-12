@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useState, useMemo } from 'react';
-import { Button, Tabs, Select, Modal, Checkbox } from 'antd';
+import { Button, Tabs, Select, Modal, Checkbox, Tooltip } from 'antd';
 import { Users, MapPin, Globe, ArrowRight, Layers, Network, User, Contact, Image, Eye, RefreshCw, Package } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useWorkflowStore } from '../stores/workflowStore';
@@ -59,6 +59,9 @@ export const SimplifiedScriptSplit: React.FC<SimplifiedScriptSplitProps> = ({
     episodes,
     parseScript,
     isParsingScript,
+    textModel,
+    textModels,
+    setTextModel,
   } = useWorkflowStore();
 
   const [activeTab, setActiveTab] = useState('characters');
@@ -564,17 +567,37 @@ export const SimplifiedScriptSplit: React.FC<SimplifiedScriptSplitProps> = ({
               下一步故事背景确定
             </Button>
           ) : (
-            <Button
-              type="primary"
-              size="large"
-              onClick={handleNext}
-              loading={isGeneratingEpisodes || confirmLoading}
-              icon={<ArrowRight size={18} />}
-              iconPlacement="end"
-              className="bg-gradient-to-r from-accent-primary to-accent-secondary border-0"
-            >
-              {isGeneratingEpisodes ? '正在生成片段...' : '生成片段'}
-            </Button>
+            <>
+              {/* 生成片段所用的文本模型（片段分镜由文本模型生成） */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted">文本模型:</span>
+                <Select
+                  value={textModel}
+                  onChange={setTextModel}
+                  options={textModels.map((m) => ({
+                    value: m.id,
+                    label: (
+                      <Tooltip title={m.description}>
+                        <span>{m.name}</span>
+                      </Tooltip>
+                    ),
+                    disabled: m.disabled,
+                  }))}
+                  size="small" popupMatchSelectWidth={false} />
+                <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+              </div>
+              <Button
+                type="primary"
+                size="large"
+                onClick={handleNext}
+                loading={isGeneratingEpisodes || confirmLoading}
+                icon={<ArrowRight size={18} />}
+                iconPlacement="end"
+                className="bg-gradient-to-r from-accent-primary to-accent-secondary border-0"
+              >
+                {isGeneratingEpisodes ? '正在生成片段...' : '生成片段'}
+              </Button>
+            </>
           )}
         </div>
       </motion.div>

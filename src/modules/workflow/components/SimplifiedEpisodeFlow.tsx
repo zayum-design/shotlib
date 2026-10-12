@@ -395,6 +395,24 @@ const SimplifiedEpisodeFlowInner: React.FC<SimplifiedEpisodeFlowProps> = ({
           customIcon={isGeneratingEpisodes ? <Loader2 size={20} className="animate-spin" /> : undefined}
           extra={
             <div className="flex items-center gap-2">
+              {/* 文本模型选择：片段生成与校验修改共用该模型 */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted">文本模型:</span>
+                <Select
+                  value={textModel}
+                  onChange={setTextModel}
+                  options={textModels.map((m) => ({
+                    value: m.id,
+                    label: (
+                      <Tooltip title={m.description}>
+                        <span>{m.name}</span>
+                      </Tooltip>
+                    ),
+                    disabled: m.disabled,
+                  }))}
+                  size="small" popupMatchSelectWidth={false} />
+                <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+              </div>
               {/* 校验修改片段/分镜提示词：与第1集 step4 步骤头部同一功能（无片段时禁用） */}
               <EpisodePromptReviewButton disabled={episodes.length === 0} />
               <Button
