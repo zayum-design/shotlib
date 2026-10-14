@@ -48,7 +48,14 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
   const loadFromCache = useCallback(async (assetId: string): Promise<ResolvedImage | null> => {
     try {
       const cached = await idbStorage.getItem<ResolvedImage>(`${CACHE_KEY_PREFIX}${assetId}`);
-      if (cached?.url) return cached;
+      if (!cached?.url) return null;
+      // blob: objectURL 仅当前会话有效,历史缓存里的一定是死链 —— 视为未命中并清除,
+      // 让本次重新解析(配置了 OSS 时 ensureUrl 会补传为持久远程地址)
+      if (cached.url.startsWith('blob:')) {
+        await idbStorage.removeItem(`${CACHE_KEY_PREFIX}${assetId}`);
+        return null;
+      }
+      return cached;
     } catch (e) {
       console.warn('[useAssetImageResolver] 读取缓存失败:', e);
     }
@@ -56,6 +63,8 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
   }, []);
 
   const saveToCache = useCallback(async (assetId: string, data: ResolvedImage) => {
+    // 会话级 blob: 地址不落缓存,避免刷新后读到死链
+    if (!data.url || data.url.startsWith('blob:')) return;
     try {
       await idbStorage.setItem(`${CACHE_KEY_PREFIX}${assetId}`, data);
     } catch (e) {
@@ -92,8 +101,11 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
       setError(null);
 
       try {
-        // 复用正在进行的请求，避免重复调用
-        let request = pendingRequests.get(projectId);
+        // 复用完全相同 id 集合的进行中请求,避免重复调用。
+        // 注意不能只按 projectId 去重:多张卡片并发解析各自的 assetId 时,
+        // 只按 projectId 复用会让后到的卡片拿到前一批的结果,自己的 id 永远解析不到
+        const requestKey = `${projectId}:${[...idsToFetch].sort().join(',')}`;
+        let request = pendingRequests.get(requestKey);
         if (!request) {
           request = localApi.resolveImageAssets(projectId, { asset_ids: idsToFetch }).then((res) => {
             if (res.success && res.data) {
@@ -101,8 +113,8 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
             }
             throw new Error(res.message || '解析图片资产失败');
           });
-          pendingRequests.set(projectId, request);
-          request.finally(() => pendingRequests.delete(projectId));
+          pendingRequests.set(requestKey, request);
+          request.finally(() => pendingRequests.delete(requestKey));
         }
 
         const fetched = await request;
@@ -160,6 +172,8 @@ export async function resolveAssetImages(
   const res = await localApi.resolveImageAssets(projectId, { asset_ids: assetIds });
   if (res.success && res.data) {
     for (const [id, data] of Object.entries(res.data)) {
+      // 会话级 blob: 地址不落缓存(同 useAssetImageResolver.saveToCache)
+      if (!data.url || data.url.startsWith('blob:')) continue;
       try {
         await idbStorage.setItem(`${CACHE_KEY_PREFIX}${id}`, data);
       } catch (e) {

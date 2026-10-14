@@ -30,6 +30,7 @@
  * 注意:代理仅转发 HTTPS 接口请求,请自行做好访问控制(建议设置 ACCESS_TOKEN)。
  */
 import http from 'node:http';
+import { Readable } from 'node:stream';
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8787);
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
@@ -125,7 +126,12 @@ const server = http.createServer(async (req, res) => {
       respHeaders[name] = value;
     });
     res.writeHead(upstream.status, { ...CORS_HEADERS, ...respHeaders });
-    res.end(Buffer.from(await upstream.arrayBuffer()));
+    if (upstream.body) {
+      // 流式转发:上游响应体逐块透传(SSE 深度思考逐行到达),普通响应行为不变
+      Readable.fromWeb(upstream.body).pipe(res);
+    } else {
+      res.end();
+    }
   } catch (error) {
     sendCors(res, 502, `代理转发失败: ${error instanceof Error ? error.message : String(error)}`);
   }

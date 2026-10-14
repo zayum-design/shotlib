@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React, { useState } from 'react';
-import { Button, Input, Select, Slider, Radio, Tooltip, Spin } from 'antd';
+import React, { useState, useMemo } from 'react';
+import { Button, Input, Select, Slider, Radio, Tooltip, Spin, Switch } from 'antd';
 import { Video, ChevronLeft, ChevronRight, CheckCircle2, AlertTriangle, Play, XCircle, Clock, GitBranch } from 'lucide-react';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { useTaskQueueStore } from '@/shared/stores/taskQueueStore';
@@ -64,6 +64,35 @@ export const EpisodeCardVideoPanel: React.FC<EpisodeCardVideoPanelProps> = ({
 }) => {
   // 片段衍生：从 store 取衍生 action（截尾帧→上传→插入新片段）
   const deriveEpisodeFromVideo = useWorkflowStore((s) => s.deriveEpisodeFromVideo);
+  // 衍生片段开关：需要片段列表判断"是否第一个片段"（第一个片段无上一片段可承接，不显示开关）
+  const allEpisodes = useWorkflowStore((s) => s.episodes);
+  const allScenes = useWorkflowStore((s) => s.scenes);
+  const canDerive = useMemo(() => {
+    const visible = (allEpisodes || []).filter((e) => !e.deleted);
+    return visible.findIndex((e) => e.id === episode.id) > 0;
+  }, [allEpisodes, episode.id]);
+
+  // 衍生片段开关切换：关闭时清除衍生注入的首帧图资产，重新开启时生成前将截取最新尾帧
+  const handleDerivativeToggle = (checked: boolean) => {
+    if (checked) {
+      updateEpisode(episode.id, { isDerivative: true });
+      return;
+    }
+    const injectedAssetId =
+      episode.firstFrameImageAssetId &&
+      (allScenes || []).some((s) => s.isDerived && s.imageAssetIds?.includes(episode.firstFrameImageAssetId!))
+        ? episode.firstFrameImageAssetId
+        : undefined;
+    if (!injectedAssetId) {
+      updateEpisode(episode.id, { isDerivative: false });
+      return;
+    }
+    updateEpisode(episode.id, {
+      isDerivative: false,
+      firstFrameImageUrl: undefined,
+      firstFrameImageAssetId: undefined,
+    });
+  };
   const [deriving, setDeriving] = useState(false);
   const handleDerive = async () => {
     setDeriving(true);
@@ -336,6 +365,22 @@ export const EpisodeCardVideoPanel: React.FC<EpisodeCardVideoPanelProps> = ({
             >
               片段衍生
             </Button>
+          )}
+          {/* 衍生片段开关：非第一个片段可开启——生成时以上一片段视频作 reference_video（视频延长接续） */}
+          {canDerive && !episode.isGenerating && (
+            <Tooltip
+              title="开启后本片段以上一片段视频作参考（视频延长），从上一片段结尾无缝接续生成"
+              placement="top"
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs text-text-muted select-none flex-shrink-0">
+                衍生片段
+                <Switch
+                  size="small"
+                  checked={!!episode.isDerivative}
+                  onChange={handleDerivativeToggle}
+                />
+              </span>
+            </Tooltip>
           )}
           {(isInterrupted || isTimeout) && (
             <Tooltip title="视频生成任务已提交，点击重试可恢复轮询">

@@ -27,7 +27,26 @@ import { useLoadingStore } from '@/shared/stores/useLoadingStore';
 import { shouldPreview, triggerPreview } from './workflowStore';
 import type { WorkflowState } from './workflowStore';
 import { message } from '@/shared/utils/message';
-import { buildActingPrefix, buildUniversalReferenceRequest, convertPromptToHtml, withVideoPromptSuffix } from './workflowStore.episode.utils';
+import { buildActingPrefix, buildUniversalReferenceRequest, convertPromptToHtml, withDerivativeGuidance, withVideoPromptSuffix } from './workflowStore.episode.utils';
+
+/**
+ * 衍生片段判定：由 isDerivative 开关标记；firstFrameImageAssetId 存在说明已准备过尾帧资产。
+ * 衍生片段走「视频延长」任务：上一片段视频作为 reference_video（视频1）提交，
+ * 模型从上一视频结尾无缝接续生成。
+ */
+function hasDerivativeFirstFrameRef(episode: { isDerivative?: boolean }): boolean {
+  return !!episode.isDerivative;
+}
+
+/** 衍生片段的上一片段（未删除列表序），与 prepareDerivativeFirstFrame 的定位逻辑保持一致 */
+function getPrevVisibleEpisode<T extends { id: string; deleted?: boolean; generatedVideoUrl?: string }>(
+  episodes: T[],
+  episodeId: string,
+): T | undefined {
+  const visible = episodes.filter((e) => !e.deleted);
+  const idx = visible.findIndex((e) => e.id === episodeId);
+  return idx > 0 ? visible[idx - 1] : undefined;
+}
 import { saveToServer } from './workflowStore.sync';
 import { getVideoPromptFormatter } from '../providers/video-prompt-factory';
 import { localApi } from '@/storage';
@@ -237,7 +256,17 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
       const buildUniversalReferenceRequestLocal = () => {
         const currentEpisodeNumber = get().currentEpisodeNumber ?? 1;
         const episodeCharacters = filterCharacterPortraitsByEpisode(characters, currentEpisodeNumber);
-        return buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, characters, get().episodeMaxDuration || 15, get().props);
+        // 衍生片段：上一片段视频作为视频延长任务的 reference_video（视频1）提交，
+        // 模型从上一视频结尾无缝接续生成；尾帧图不再作为参考图重复提交
+        const isDerivative = hasDerivativeFirstFrameRef(episode);
+        const derivativePrevVideoUrl = isDerivative
+          ? (getPrevVisibleEpisode(get().episodes, episodeId)?.generatedVideoUrl || '')
+          : '';
+        return {
+          isDerivative,
+          derivativePrevVideoUrl,
+          refData: buildUniversalReferenceRequest(episode, episodeCharacters, scenes, videoModels, getVideoPromptFormatter, characters, get().episodeMaxDuration || 15, get().props, derivativePrevVideoUrl || undefined),
+        };
       };
 
       const doGenerate = async () => {
@@ -247,6 +276,15 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
           return;
         }
         GENERATING_EPISODES.add(episodeId);
+
+        // 衍生片段生成前置：截上一片段视频尾帧写入 firstFrame（幂等），失败中止生成
+        if (episode.isDerivative) {
+          const prepared = await get().prepareDerivativeFirstFrame(episodeId);
+          if (!prepared) {
+            GENERATING_EPISODES.delete(episodeId);
+            return;
+          }
+        }
 
         const { addTask, completeTask, failTask, incrementPollCount, removeTask } = useTaskQueueStore.getState();
 
@@ -262,6 +300,13 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
           taskId = latestExistingTask.id;
           backendId = latestExistingTask.metadata?.backendId as number | undefined;
           console.log(`[generateEpisodeVideo/doGenerate] 复用中断任务 taskId=${taskId}, backendId=${backendId}`);
+        } else if (latestExistingTask?.status === 'pending' && latestExistingTask.metadata?.batchQueued) {
+          // 批量生成预入队的排队任务：滑动窗口腾出槽位时走到这里,复用并置为 running,
+          // 避免与预入队任务重复(批量点击时全部片段已先以 pending 加入队列)
+          taskId = latestExistingTask.id;
+          backendId = latestExistingTask.metadata?.backendId as number | undefined;
+          useTaskQueueStore.getState().updateTask(taskId, { status: 'running' });
+          console.log(`[generateEpisodeVideo/doGenerate] 复用批量排队任务 taskId=${taskId}`);
         } else {
           taskId = addTask({
             type: 'episode-video',
@@ -373,8 +418,8 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
               );
             }
           } else {
-            const refData = buildUniversalReferenceRequestLocal();
-            console.log(`[generateEpisodeVideo/doGenerate] buildUniversalReferenceRequest done, referenceModel=${refData.referenceModel}, originalModel=${refData.originalModel}, refImages=${refData.referenceImages.length}, refAudios=${refData.referenceAudios.length}, totalDuration=${refData.totalDuration}`);
+            const { refData, isDerivative } = buildUniversalReferenceRequestLocal();
+            console.log(`[generateEpisodeVideo/doGenerate] buildUniversalReferenceRequest done, referenceModel=${refData.referenceModel}, originalModel=${refData.originalModel}, refImages=${refData.referenceImages.length}, refAudios=${refData.referenceAudios.length}, refVideos=${refData.referenceVideos.length}, totalDuration=${refData.totalDuration}`);
             console.log(`[generateEpisodeVideo/doGenerate] processedPrompt(first 200):`, (refData.processedPrompt || '').substring(0, 200));
 
             if (refData.referenceImages.length === 0 && refData.referenceAudios.length === 0 && refData.referenceVideos.length === 0) {
@@ -391,11 +436,14 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
               );
               console.log(`[generateEpisodeVideo/doGenerate] generateEpisodeVideoApi response:`, response);
             } else {
+              // 衍生片段：视频延长引导语（延续视频1=上一片段视频）插入【分镜时间线】之前，紧贴镜头内容
+              const derivativeGuidance = isDerivative ? '向后延续视频1，画面无缝延续，' : '';
+              const finalPrompt = withDerivativeGuidance(refData.processedPrompt, derivativeGuidance);
               const referenceImageUrls = refData.referenceImages;
-              console.log(`[generateEpisodeVideo/doGenerate] calling generateEpisodeVideoWithReferencesApi, refImageCount=${referenceImageUrls.length}, model=${refData.referenceModel}, ratio=${getCurrentProjectAspectRatio()}, duration=${refData.totalDuration}`);
+              console.log(`[generateEpisodeVideo/doGenerate] calling generateEpisodeVideoWithReferencesApi, refImageCount=${referenceImageUrls.length}, refVideoCount=${refData.referenceVideos.length}, model=${refData.referenceModel}, ratio=${getCurrentProjectAspectRatio()}, duration=${refData.totalDuration}`);
               response = await workflowApi.generateEpisodeVideoWithReferencesApi(
                 episodeId,
-                refData.processedPrompt,
+                finalPrompt,
                 referenceImageUrls,
                 refData.referenceModel,
                 getCurrentProjectAspectRatio(),

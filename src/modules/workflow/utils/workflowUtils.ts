@@ -69,6 +69,9 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
 
   let html = '';
   let lastIndex = 0;
+  // 最近一次解析成功的角色 id：【形象照:多视图】托底标记无角色信息，
+  // 依赖 prompt 结构（形象照标注紧跟其所属角色的标记）回退到该角色的多视图
+  let lastRoleCharId = '';
 
   // 改进的正则表达式，使用非贪婪匹配，并允许标签内容中包含其他标签
   // 兼容有属性/无属性，以及 @<scene> 这种异常前缀格式
@@ -99,6 +102,9 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
     let imageUrl = '';
     let portraitIndex = '';
     let assetType = '';
+    // 多视图托底标记：portraitIndex 指向 multiViewImages 而非 fullBodyImages，
+    // pill 拼接时补 data-multiview="1" 供编辑器序列化与视频提交解析区分
+    let isMultiView = false;
 
     // 异常名字过滤：标签内若仅为 # / @ / 空白，视为非法 pill，降级为纯文本
     const isValidName = (s: string): boolean =>
@@ -135,6 +141,7 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
       if (name && entityId) {
         const char = findCharByIdOrName(filteredCharacters, entityId, name);
         imageUrl = imgSrc || getCharImage(char);
+        if (char) lastRoleCharId = char.id;
       }
     } else if (tagContent.startsWith('#<scene') || tagContent.startsWith('@<scene')) {
       tagType = 'scene';
@@ -216,6 +223,14 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
         const portraits = char?.fullBodyImages || [];
         const portrait = portraits[parseInt(portraitIndex, 10)];
         imageUrl = imgSrc || getPortraitImage(portrait);
+        // 多视图托底标签（multi-view="1" 或名字含「多视图」）：portraitIndex 指向 multiViewImages
+        if (!imageUrl && (/multi-view="1"/.test(tagContent) || name.includes('多视图'))) {
+          const mv = char?.multiViewImages?.[parseInt(portraitIndex, 10) || 0];
+          if (mv?.imageUrl) {
+            imageUrl = mv.imageUrl;
+            isMultiView = true;
+          }
+        }
       }
       // 关键修复：形象照精确定位无图时（独立形象照 character 的图存在 avatarImages、
       // 或 fullBodyImages.assetId 未被 resolveImageAssets 解析出 url），按 name 全局回查
@@ -284,6 +299,21 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
           break;
         }
       }
+
+      // 多视图托底：【形象照:多视图】是无形象照角色的托底标注（生成清单只给「多视图」一名，
+      // 全角色同名无法按名定位），按名查 fullBodyImages 落空后回退到当前角色的
+      // multiViewImages 第一张有图的——角色上下文取自最近一次解析成功的【角色:/@<role> 标记
+      if (!imageUrl && name.includes('多视图')) {
+        const char = filteredCharacters.find((c) => c.id === entityId)
+          || filteredCharacters.find((c) => c.id === lastRoleCharId);
+        const mvIdx = (char?.multiViewImages || []).findIndex((img: any) => !!img?.imageUrl);
+        if (char && mvIdx >= 0) {
+          entityId = char.id;
+          portraitIndex = String(mvIdx);
+          imageUrl = getPortraitImage(char.multiViewImages![mvIdx]);
+          isMultiView = true;
+        }
+      }
     } else if (tagContent.startsWith('【角色:')) {
       // 关键修复：后端 prompt 模板输出【角色:姓名】中文方括号标记
       tagType = 'role';
@@ -310,6 +340,7 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
       if (char) {
         entityId = char.id;
         imageUrl = getCharImage(char);
+        lastRoleCharId = char.id;
       }
     } else if (tagContent.startsWith('【场景:')) {
       // 关键修复：后端 prompt 模板输出【场景:名称】中文方括号标记
@@ -365,7 +396,7 @@ export const renderVisualPrompt = function renderVisualPromptImpl(prompt: string
       const imgHtml = imageUrl
         ? `<img src="${imageUrl}" class="w-5 h-5 rounded-full object-cover border border-purple-500/30" onerror="this.style.display='none'">`
         : `<div class="w-5 h-5 rounded-full bg-purple-500/30 flex items-center justify-center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>`;
-      html += `<span contenteditable="false" data-portrait-tag="true" data-character-id="${entityId}" data-portrait-index="${portraitIndex}" data-name="${safeName}" data-image="${imageUrl}" data-hover-image="${imageUrl}" data-hover-type="portrait" data-hover-name="${safeName}" class="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 bg-purple-500/20 border border-purple-500/40 rounded-full text-purple-400 text-sm select-none cursor-default">${imgHtml} <span class="font-medium">${name}</span></span><span>​</span>`;
+      html += `<span contenteditable="false" data-portrait-tag="true" data-character-id="${entityId}"${isMultiView ? ' data-multiview="1"' : ''} data-portrait-index="${portraitIndex}" data-name="${safeName}" data-image="${imageUrl}" data-hover-image="${imageUrl}" data-hover-type="portrait" data-hover-name="${safeName}" class="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 bg-purple-500/20 border border-purple-500/40 rounded-full text-purple-400 text-sm select-none cursor-default">${imgHtml} <span class="font-medium">${name}</span></span><span>​</span>`;
     } else if (tagType === 'asset' && name) {
       // 参考附件 pill（琥珀色）：图片显示缩略图并可 hover 预览，视频/音频显示类型图标
       // 文字用 amber-600 而非 amber-400：浅色主题（白底）下 amber-400 对比度过低看不清

@@ -19,6 +19,7 @@
  * 所有请求经 providerFetch 走现有代理策略与请求日志面板。
  */
 import { providerFetch } from '../../core/client';
+import { fetchRemoteBlob } from '../../core/media';
 import type { ComfyWorkflowTemplate } from './comfyui-workflow-loader';
 
 export interface ComfyPromptResponse {
@@ -99,6 +100,28 @@ export async function getPromptHistory(
   return data[promptId];
 }
 
+/**
+ * 查询服务器是否已安装指定节点类(GET /object_info/{class})。
+ * 未知节点返回 404 或空对象,均视为未安装;请求异常同样视为未安装(调用方走降级路径)。
+ */
+export async function hasClassNode(
+  baseUrl: string,
+  classType: string,
+): Promise<boolean> {
+  try {
+    const resp = await providerFetch(
+      PROVIDER_ID,
+      `${baseUrl}/object_info/${encodeURIComponent(classType)}`,
+      { method: 'GET', timeout: 10000 },
+    );
+    if (!resp.ok) return false;
+    const data = (await resp.json()) as Record<string, unknown>;
+    return typeof data === 'object' && data !== null && classType in data;
+  } catch {
+    return false;
+  }
+}
+
 /** ComfyUI 队列状态 */
 export interface ComfyQueueStatus {
   queue_running: Array<[number, string, unknown]>;
@@ -148,11 +171,14 @@ export async function uploadImage(
   return data.name;
 }
 
-/** 远程 URL / blob URL → Blob(参考图上传前的取料步骤) */
+/** 远程 URL / blob URL → Blob(参考图上传前的取料步骤;直连被 CORS 拦截时自动经代理重试,
+ *  OSS/厂商签名地址均可作为参考图来源) */
 export async function fetchImageBlob(url: string): Promise<Blob> {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`获取参考图失败 HTTP ${resp.status}: ${url.slice(0, 120)}`);
-  return resp.blob();
+  try {
+    return await fetchRemoteBlob(url);
+  } catch (e) {
+    throw new Error(`获取参考图失败: ${(e as Error).message}`);
+  }
 }
 
 /** 拼 /view 下载地址 */

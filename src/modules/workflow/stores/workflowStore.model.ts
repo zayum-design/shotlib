@@ -65,6 +65,7 @@ export function createModelSlice(set: SetFn, get: GetFn): ModelSliceActions {
               concurrentLimit: m.concurrentLimit,
               ipm: m.ipm,
               recommended: m.recommended,
+              reasoning: m.reasoning,
             }));
 
           // 如果某个类型没有启用的模型，使用占位符模型

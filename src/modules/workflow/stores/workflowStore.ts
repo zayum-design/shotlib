@@ -168,7 +168,15 @@ export interface WorkflowState {
   // 加载状态
   isGeneratingScript: boolean;
   isParsingScript: boolean;
+  /** 最近一次「片段衍生」新建片段的 id（用于 tab 上方浮动「片段N衍生」角标），无则为 null */
+  lastNewDerivedEpisode: string | null;
   isReviewingScript: boolean;
+  /** 最近一次校验审阅产出的角色清单修订建议（缺失角色/跨桶改名），无建议为 null */
+  lastCharacterSuggestions: import('@/ai/services/ai-model.dto').CharacterRevisionSuggestions | null;
+  /** 剧本生成「深度思考」开关：开启且剧本模型为推理模型时走流式生成（思考过程逐行展示） */
+  scriptDeepThinking: boolean;
+  /** 片段生成「深度思考」开关：开启且文本模型为推理模型时走流式分解（思考过程逐行展示） */
+  episodeDeepThinking: boolean;
   isReviewingAssets: boolean;
   isReviewingEpisodes: boolean;
   isGeneratingEpisodes: boolean;
@@ -228,14 +236,22 @@ export interface WorkflowState {
   setSummary: (summary: string) => void;
   setSimplifiedMode: (enabled: boolean) => void;
   setIsEnding: (isEnding: boolean) => void;
+  setScriptDeepThinking: (enabled: boolean) => void;
+  setEpisodeDeepThinking: (enabled: boolean) => void;
+  /** 标记新建的衍生片段（写入 lastNewDerivedEpisode，tab 角标读取） */
+  markNewDerivedEpisode: (episodeId: string) => void;
   setIsImporting: (isImporting: boolean) => void;
 
   generateScript: (subStyle?: string, artStyle?: string, regenerateSummary?: boolean) => Promise<boolean>;
-  parseScript: (options?: { replace?: boolean }) => Promise<void>;
-  /** 校验审阅剧本（mode=review 返回审阅报告）或按修改要求修改剧本（mode=modify 返回修改后的新剧本，不直接应用，需确认后调用 applyModifiedScript） */
-  reviewScript: (mode: 'review' | 'modify', requirement?: string) => Promise<string | null>;
+  parseScript: (options?: { replace?: boolean; /** 显式指定深度思考(缺省读全局剧本深度思考开关) */ deepThinking?: boolean }) => Promise<void>;
+  /** 校验审阅剧本（mode=review 返回审阅报告；角色清单修订建议写入 lastCharacterSuggestions）或按修改要求修改剧本（mode=modify 返回修改后的新剧本，不直接应用，需确认后调用 applyModifiedScript） */
+  reviewScript: (mode: 'review' | 'modify' | 'audience-review', requirement?: string, audiences?: string[]) => Promise<string | null>;
   /** 确认应用修改后的剧本（差异对比确认后调用），更新剧本并持久化 */
   applyModifiedScript: (newScript: string) => Promise<void>;
+  /** 补充缺失角色（校验审阅报告建议触发）：按剧本生成完整角色条目并追加到角色清单，返回补充数 */
+  completeMissingCharacters: (missing: Array<{ name: string; age?: string; gender?: string; stage?: string; description?: string; firstAppearance?: string }>) => Promise<number>;
+  /** 应用角色改名建议（跨年龄段桶自动改名）：同步替换角色名/形象照名/分集文本中的旧名，返回应用数 */
+  applyCharacterRenames: (renames: Array<{ from: string; to: string; reason?: string }>) => Promise<number>;
   /** 校验审阅角色/场景提示词（mode=review 返回审阅报告）或按修改要求修改提示词（mode=modify 返回修改结果，不直接应用，需勾选确认后调用 applyAssetPromptChanges） */
   reviewAssetPrompts: (mode: 'review' | 'modify', requirement?: string) => Promise<string | AssetPromptChanges | null>;
   /** 应用勾选的资产提示词修改项，更新角色/场景并持久化 */
@@ -277,6 +293,8 @@ export interface WorkflowState {
   insertEpisodeAfter: (afterEpisodeId: string, episode: Episode) => string;
   removeEpisode: (episodeId: string) => void;
   deriveEpisodeFromVideo: (episodeId: string) => Promise<{ newEpisodeId: string } | null>;
+  /** 衍生片段生成前置：截上一片段视频尾帧写入当前片段 firstFrame（幂等），失败返回 false */
+  prepareDerivativeFirstFrame: (episodeId: string) => Promise<boolean>;
   generateEpisodeVideo: (episodeId: string) => Promise<void>;
   getEpisodeVideoPreviewData: (episodeId: string) => { endpoint: string; body: any } | null;
   pollVideoTaskStatus: (episodeId: string, taskId: string, taskQueueTaskId?: string) => Promise<void>;
@@ -350,6 +368,10 @@ export const useWorkflowStore = create<WorkflowState>()(
     isGeneratingScript: false,
     isParsingScript: false,
     isReviewingScript: false,
+    lastCharacterSuggestions: null,
+    lastNewDerivedEpisode: null,
+    scriptDeepThinking: false,
+    episodeDeepThinking: false,
     isReviewingAssets: false,
     isReviewingEpisodes: false,
     isGeneratingEpisodes: false,
@@ -427,6 +449,9 @@ export const useWorkflowStore = create<WorkflowState>()(
     setSimplifiedMode: (isSimplifiedMode) => set({ isSimplifiedMode }),
 
     setIsEnding: (isEnding) => set({ isEnding }),
+    setScriptDeepThinking: (enabled) => set({ scriptDeepThinking: enabled }),
+    setEpisodeDeepThinking: (enabled) => set({ episodeDeepThinking: enabled }),
+    markNewDerivedEpisode: (episodeId) => set({ lastNewDerivedEpisode: episodeId }),
     setIsImporting: (isImporting) => set({ isImporting }),
 
     updateCharacter: (id, updates) => {

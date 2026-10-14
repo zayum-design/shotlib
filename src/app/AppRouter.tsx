@@ -14,7 +14,7 @@
 
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import App from './App';
-import ProjectsPage from '@/modules/projects/ProjectsPage';
+import { ProjectsPage } from '@/modules/projects/ProjectsPage';
 import SettingsPage from '@/settings/SettingsPage';
 import { WorkflowPage } from '@/modules/workflow/pages/WorkflowPage';
 import { InstantCreatePage } from '@/modules/instant/pages/InstantCreatePage';

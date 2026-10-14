@@ -40,8 +40,10 @@ interface EpisodeGenerateProps {
 const SortableTabWrapper: React.FC<{
   id: string;
   showNewBadge?: boolean;
+  /** 衍生片段角标文字（如「片段3衍生」），显示在 tab 标题上方 */
+  deriveBadge?: string;
   children: React.ReactNode;
-}> = ({ id, showNewBadge, children }) => {
+}> = ({ id, showNewBadge, deriveBadge, children }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   return (
     <div
@@ -58,6 +60,9 @@ const SortableTabWrapper: React.FC<{
     >
       {showNewBadge && (
         <span className="absolute -top-1.5 -right-1.5 z-20 text-[9px] font-bold leading-none px-1.5 py-0.5 rounded-full bg-red-500 text-white shadow pointer-events-none">新</span>
+      )}
+      {deriveBadge && (
+        <span className="absolute -top-2 left-1/2 -translate-x-1/2 z-20 text-[9px] font-medium leading-none px-1.5 py-0.5 rounded-full bg-accent-primary/90 text-white shadow pointer-events-none whitespace-nowrap">{deriveBadge}</span>
       )}
       {children}
     </div>
@@ -172,6 +177,15 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
     message.warning('开源版不支持导出剪映草稿(需服务端支持),请逐段下载片段视频');
   };
 
+  // 最近一次「片段衍生」新建片段的 id（tab 上方浮动「片段N衍生」角标）
+  const lastNewDerivedEpisode = useWorkflowStore((s) => s.lastNewDerivedEpisode);
+  // 衍生角标文字：按片段 title（如「片段3衍生」），未知时「衍生」兜底
+  const derivedBadgeText = useMemo(() => {
+    if (!lastNewDerivedEpisode) return undefined;
+    const ep = episodes.find((e) => e.id === lastNewDerivedEpisode);
+    return ep?.title?.trim() || '衍生';
+  }, [lastNewDerivedEpisode, episodes]);
+
   // 批量生成控制
   const abortBatchRef = useRef<AbortController | null>(null);
   const [isBatchGenerating, setIsBatchGenerating] = useState(false);  // 批量生成统一使用的视频模型（默认第一个可用模型，videoModels 异步加载后兜底赋值）
@@ -199,18 +213,45 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
     abortBatchRef.current = new AbortController();
     setIsBatchGenerating(true);
     setSkipPreview(true);
-    const { setTaskPanelOpen } = useTaskQueueStore.getState();
+    const { setTaskPanelOpen, addTask, tasks: tasksBefore, removeTask } = useTaskQueueStore.getState();
     setTaskPanelOpen(true);
+
+    // 清理上次批量停止后残留的排队任务(batchQueued 且仍 pending = 从未被窗口调度)
+    for (const t of tasksBefore) {
+      if (t.type === 'episode-video' && t.status === 'pending' && t.metadata?.batchQueued) {
+        removeTask(t.id);
+      }
+    }
+
+    // 全部片段立即预入队(pending「排队中」):点击后任务面板一次看到所有任务;
+    // 滑动窗口腾出槽位时由 generateEpisodeVideo 复用对应任务并置为 running,
+    // 不再出现「只显示 concurrentLimit 个任务、其余看不见」的问题
+    for (const ep of ungeneratedEpisodes) {
+      addTask({
+        type: 'episode-video',
+        name: `生成视频: ${ep.title || '片段'}`,
+        status: 'pending',
+        modelVariant: batchVideoModel || ep.model,
+        metadata: {
+          episodeId: ep.id,
+          projectId: useWorkflowStore.getState().currentProjectId,
+          batchQueued: true,
+        },
+      });
+    }
     message.success(`已添加 ${ungeneratedEpisodes.length} 个视频生成任务到队列，将按各模型并发数处理`);
     try {
-      // 并发提交：按选中的批量模型分组、按其 concurrentLimit 滑动窗口（soft 限流，
-      // 防瞬间打爆 BFF）。所有片段投入后端队列；真正的"同时生成数 ≤ concurrentLimit"
-      // 由后端 VariantConcurrencyGuard（仅 Bull processor 内 acquire）保证。
+      // 调度:按选中的批量模型分组、按其 concurrentLimit 滑动窗口(soft 限流,防瞬间
+      // 打爆厂商 API)。窗口只决定谁开始提交;所有任务在上方已全部入队可见
       await concurrentBatchExecute(
         ungeneratedEpisodes,
         (ep) => batchVideoModel || ep.model,
         async (ep) => {
           if (abortBatchRef.current?.signal.aborted) return;
+          // 排队等槽位期间片段可能已被单独生成完成,跳过避免重复生成覆盖
+          // (跳过时其预入队任务保持 pending,由 finally 清理移除)
+          const current = useWorkflowStore.getState().episodes.find((e) => e.id === ep.id);
+          if (current?.generatedVideoUrl) return;
           await generateEpisodeVideo(ep.id);
         },
         videoModels,
@@ -219,6 +260,13 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
       setSkipPreview(false);
       setIsBatchGenerating(false);
       abortBatchRef.current = null;
+      // 停止生成/异常中断时,清理从未被窗口调度到的排队任务
+      const { tasks: tasksAfter, removeTask: cleanupRemove } = useTaskQueueStore.getState();
+      for (const t of tasksAfter) {
+        if (t.type === 'episode-video' && t.status === 'pending' && t.metadata?.batchQueued) {
+          cleanupRemove(t.id);
+        }
+      }
     }
   }, [episodes, batchVideoModel, videoModels, generateEpisodeVideo]);
 
@@ -479,7 +527,12 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
                 {(node: React.ReactNode) => {
                   const episodeId = String((node as React.ReactElement).key ?? '');
                   return (
-                    <SortableTabWrapper key={episodeId} id={episodeId} showNewBadge={newEpisodeIds.has(episodeId)}>
+                    <SortableTabWrapper
+                      key={episodeId}
+                      id={episodeId}
+                      showNewBadge={newEpisodeIds.has(episodeId)}
+                      deriveBadge={lastNewDerivedEpisode === episodeId ? derivedBadgeText : undefined}
+                    >
                       {node}
                     </SortableTabWrapper>
                   );

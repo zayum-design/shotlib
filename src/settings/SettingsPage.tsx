@@ -229,6 +229,45 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
     }
   }, [config.id, config.name, message]);
 
+  // ---------- 代理/直连开关(全局代理地址在上方「代理配置」区块维护) ----------
+  const [proxyOverride, setProxyOverride] = useState<ProxyMode | undefined>();
+  const [hasProxyUrl, setHasProxyUrl] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    settingsRepo.get().then((s) => {
+      if (!alive) return;
+      setProxyOverride(s.providerProxyMode?.[config.id]);
+      setHasProxyUrl(!!s.proxyUrl);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [config.id]);
+
+  /** 当前实际生效模式:用户覆盖 > 厂商默认建议(且需已配置代理地址) */
+  const proxyEffective =
+    proxyOverride === 'proxy'
+      ? true
+      : proxyOverride === 'direct'
+        ? false
+        : getProviderProxyDefault(config.id) && hasProxyUrl;
+
+  const handleProxyToggle = useCallback(async (checked: boolean) => {
+    const next = (checked ? 'proxy' : 'direct') as ProxyMode;
+    const s = await settingsRepo.get();
+    const modes = { ...(s.providerProxyMode || {}), [config.id]: next };
+    setProxyOverride(next);
+    await settingsRepo.save({ providerProxyMode: modes });
+  }, [config.id]);
+
+  const handleProxyReset = useCallback(async () => {
+    const s = await settingsRepo.get();
+    const modes = { ...(s.providerProxyMode || {}) };
+    delete modes[config.id];
+    setProxyOverride(undefined);
+    await settingsRepo.save({ providerProxyMode: modes });
+  }, [config.id]);
+
   return (
     <Card size="small" styles={{ body: { padding: '12px 16px' } }}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -253,6 +292,27 @@ function ProviderKeyCard({ config }: { config: ProviderConfig }) {
           unCheckedChildren="禁用"
           size="small"
         />
+        {/* 代理/直连开关:跟在启用按钮后面 */}
+        <Space size={4}>
+          <Text type="secondary" className="text-xs">直连</Text>
+          <Switch
+            size="small"
+            checked={proxyEffective}
+            disabled={!hasProxyUrl}
+            onChange={handleProxyToggle}
+          />
+          <Text type="secondary" className="text-xs">代理</Text>
+          {proxyOverride !== undefined && (
+            <Tooltip title="恢复厂商默认建议">
+              <Button
+                type="text"
+                size="small"
+                icon={<RotateCcw size={12} />}
+                onClick={handleProxyReset}
+              />
+            </Tooltip>
+          )}
+        </Space>
         {config.apiDocUrl && (
           <a
             href={config.apiDocUrl}
@@ -336,7 +396,6 @@ function ProxySection() {
   const { message } = AntdApp.useApp();
   const [proxyUrl, setProxyUrl] = useState('');
   const [savedUrl, setSavedUrl] = useState('');
-  const [modes, setModes] = useState<Record<string, ProxyMode>>({});
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null);
@@ -348,7 +407,6 @@ function ProxySection() {
       if (!alive) return;
       setProxyUrl(s.proxyUrl);
       setSavedUrl(s.proxyUrl);
-      setModes(s.providerProxyMode || {});
     });
     return () => {
       alive = false;
@@ -390,48 +448,13 @@ function ProxySection() {
     }
   }, [savedUrl, message]);
 
-  /** 当前实际生效模式:用户覆盖 > 厂商默认建议(且需已配置代理地址) */
-  const currentMode = useCallback(
-    (providerId: string) => {
-      const override = modes[providerId];
-      if (override === 'proxy') return true;
-      if (override === 'direct') return false;
-      return getProviderProxyDefault(providerId) && !!savedUrl;
-    },
-    [modes, savedUrl],
-  );
-
-  const handleModeChange = useCallback(
-    async (providerId: string, useProxy: boolean) => {
-      const next = {
-        ...modes,
-        [providerId]: (useProxy ? 'proxy' : 'direct') as ProxyMode,
-      };
-      setModes(next);
-      await settingsRepo.save({ providerProxyMode: next });
-    },
-    [modes],
-  );
-
-  const handleResetMode = useCallback(
-    async (providerId: string) => {
-      const next = { ...modes };
-      delete next[providerId];
-      setModes(next);
-      await settingsRepo.save({ providerProxyMode: next });
-    },
-    [modes],
-  );
-
-  const providers = useMemo(() => getAllProviderConfigs(), []);
-
   return (
     <Card title={<Space size={8}><Cloud size={16} /> 代理配置</Space>}>
       <Alert
         type="info"
         showIcon
         className="mb-3"
-        message="部分厂商接口不允许浏览器跨域直连,需经轻量代理转发(部署说明见项目 README);其余厂商可直连。"
+        message="部分厂商接口不允许浏览器跨域直连,需经轻量代理转发(部署说明见项目 README)。各厂商的直连/代理开关在下方 API Key 管理的厂商卡片中设置。"
       />
       <Space.Compact className="w-full max-w-xl">
         <Input
@@ -462,46 +485,6 @@ function ProxySection() {
           <Text type="danger" className="text-xs">{testMsg}</Text>
         </div>
       )}
-
-      <div className="mt-4 flex flex-col gap-2">
-        {providers.map((config) => {
-          const providerDefault = getProviderProxyDefault(config.id);
-          const hasOverride = modes[config.id] !== undefined;
-          return (
-            <div
-              key={config.id}
-              className="flex items-center justify-between gap-3 flex-wrap rounded border border-current/10 px-3 py-2"
-            >
-              <Space size={8} wrap>
-                <Text strong className="text-sm">{config.name}</Text>
-                <Tag bordered={false} color={providerDefault ? 'orange' : 'default'}>
-                  默认建议:{providerDefault ? '代理' : '直连'}
-                </Tag>
-                {hasOverride && (
-                  <Tooltip title="恢复厂商默认建议">
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<RotateCcw size={12} />}
-                      onClick={() => handleResetMode(config.id)}
-                    />
-                  </Tooltip>
-                )}
-              </Space>
-              <Space size={8}>
-                <Text type="secondary" className="text-xs">直连</Text>
-                <Switch
-                  size="small"
-                  checked={currentMode(config.id)}
-                  disabled={!savedUrl}
-                  onChange={(checked) => handleModeChange(config.id, checked)}
-                />
-                <Text type="secondary" className="text-xs">代理</Text>
-              </Space>
-            </div>
-          );
-        })}
-      </div>
       {!savedUrl && (
         <div className="mt-2">
           <Text type="secondary" className="text-xs">
@@ -1000,8 +983,8 @@ export default function SettingsPage() {
           {loading && <Spin size="small" />}
         </Space>
         <div className="flex flex-col gap-5">
-          <ApiKeySection />
           <ProxySection />
+          <ApiKeySection />
           <DefaultModelsSection />
           <OssSection />
           <PreviewDialogSection />

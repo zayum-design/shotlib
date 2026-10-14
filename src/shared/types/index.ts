@@ -176,6 +176,8 @@ export interface Episode {
   isExpandingFirstFrame?: boolean; // 首帧扩图中
   isExpandingLastFrame?: boolean; // 尾帧扩图中
   frameModel?: string; // 首帧图片生成模型
+  /** 衍生片段标记：生成时以上一片段视频作 reference_video（视频延长接续），由「衍生片段」开关设置 */
+  isDerivative?: boolean;
   lastFrameModel?: string; // 尾帧图片生成模型
   firstLastFrameVideoPrompt?: string; // 首尾帧生成视频的专用提示词
   firstFrameDialogue?: string; // 首帧对白
@@ -374,6 +376,7 @@ export interface ModelConfig {
   concurrentLimit?: number; // 同一模型最大并发任务数（视频/音乐模型）
   ipm?: number; // 每分钟图片数限制（图片模型）
   recommended?: boolean; // 推荐模型（默认选中优先级：之前选中的 → 推荐的 → 列表第一个）
+  reasoning?: boolean; // 深度思考模型（剧本生成走流式并展示思考过程）
 }
 
 // 无可用模型占位符

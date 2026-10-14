@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useState, useMemo, useEffect } from 'react';
-import { Button, Spin, Empty, Tabs, Select, Modal, Checkbox, Radio, Tooltip, message } from 'antd';
+import { Button, Spin, Empty, Tabs, Select, Modal, Checkbox, Radio, Tooltip, Switch, message } from 'antd';
 import { Users, MapPin, Globe, ArrowRight, Layers, Network, User, Contact, Image, Eye, Package } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useWorkflowStore } from '../../stores/workflowStore';
@@ -27,6 +27,41 @@ import { ImagePreview } from '@/shared/components/ui/ImagePreview';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { useResolvedImageUrls } from '../../hooks/useWorkflowImageResolver';
 import { filterEpisodeProps } from '../../utils/workflowUtils';
+
+/**
+ * 片段生成「深度思考」开关：开启且当前文本模型为推理模型（reasoning）时，
+ * 剧本分解走流式深度思考（loading 逐行展示节拍覆盖/提示词一致性/资产引用/时长自检）。
+ */
+export const EpisodeDeepThinkingSwitch: React.FC = () => {
+  const episodeDeepThinking = useWorkflowStore((s) => s.episodeDeepThinking);
+  const setEpisodeDeepThinking = useWorkflowStore((s) => s.setEpisodeDeepThinking);
+  const textModel = useWorkflowStore((s) => s.textModel);
+  const textModels = useWorkflowStore((s) => s.textModels);
+  const isGeneratingEpisodes = useWorkflowStore((s) => s.isGeneratingEpisodes);
+  const modelSupports =
+    (textModels || []).find((m) => m.id === textModel)?.reasoning === true;
+
+  return (
+    <Tooltip
+      title={
+        modelSupports
+          ? '开启后生成片段走深度思考流式：模型先按节拍覆盖/提示词一致性/资产引用/时长逐项自检再输出，思考过程逐行显示'
+          : '当前文本模型不支持深度思考，请切换为推理模型'
+      }
+      placement="top"
+    >
+      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted select-none">
+        深度思考
+        <Switch
+          size="small"
+          checked={episodeDeepThinking && modelSupports}
+          disabled={!modelSupports || isGeneratingEpisodes}
+          onChange={(checked) => setEpisodeDeepThinking(checked)}
+        />
+      </span>
+    </Tooltip>
+  );
+};
 
 interface ScriptSplitProps {
   onStepChange?: (step: number) => void;
@@ -66,17 +101,24 @@ export const ScriptSplit: React.FC<ScriptSplitProps> = ({
   } = useWorkflowStore();
 
   const [activeTab, setActiveTab] = useState('characters');
+  // 批量生成(头像/形象照/多视图/场景/道具)的模型列表:
+  // 去掉图生图专属模型(supports.text_to_image === false,如 ComfyUI qwen-image-edit)——
+  // 图生图模型只改参考图、不遵循提示词重绘,批量生成会退化成参考图(头像)的复制品
+  const batchImageModels = useMemo(
+    () => imageModels.filter((m) => (m.supports as Record<string, unknown> | undefined)?.text_to_image !== false),
+    [imageModels],
+  );
   const [batchModel, setBatchModel] = useState(imageModel);
 
   // 模型列表异步加载完成后同步批量模型：
   // 优先级 之前选中的（batchModel 仍在列表中则保留）→ 推荐模型 → 当前 imageModel → 列表第一个
   useEffect(() => {
-    if (!imageModels.length) return;
-    if (imageModels.some((m) => m.id === batchModel && !m.disabled)) return;
-    const recommended = imageModels.find((m) => m.recommended && !m.disabled);
-    const fallback = imageModels.find((m) => m.id === imageModel && !m.disabled) || imageModels.find((m) => !m.disabled);
+    if (!batchImageModels.length) return;
+    if (batchImageModels.some((m) => m.id === batchModel && !m.disabled)) return;
+    const recommended = batchImageModels.find((m) => m.recommended && !m.disabled);
+    const fallback = batchImageModels.find((m) => m.id === imageModel && !m.disabled) || batchImageModels.find((m) => !m.disabled);
     setBatchModel(recommended?.id || fallback?.id || imageModel);
-  }, [imageModels]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [batchImageModels]); // eslint-disable-line react-hooks/exhaustive-deps
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -276,14 +318,14 @@ export const ScriptSplit: React.FC<ScriptSplitProps> = ({
                 <Select
                   value={batchModel}
                   onChange={setBatchModel}
-                  options={imageModels.map((m) => ({
+                  options={batchImageModels.map((m) => ({
                     value: m.id,
                     label: m.name,
                     disabled: m.disabled,
                   }))}
                   size="small"
                   placeholder="图片模型" popupMatchSelectWidth={false} />
-                <ModelPriceTag model={imageModels.find(m => m.id === batchModel)} />
+                <ModelPriceTag model={batchImageModels.find(m => m.id === batchModel)} />
                 {activeTab === 'characters' && (
                   <>
                     <Button
@@ -605,6 +647,8 @@ export const ScriptSplit: React.FC<ScriptSplitProps> = ({
                     }))}
                     size="small" popupMatchSelectWidth={false} />
                   <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+                  {/* 片段深度思考开关：开启且模型为推理模型时走流式深度思考分解 */}
+                  <EpisodeDeepThinkingSwitch />
                 </div>
                 <Button
                   type="primary"

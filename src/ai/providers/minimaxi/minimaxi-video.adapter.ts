@@ -87,6 +87,8 @@ export class MiniMaxVideoAdapter extends BaseAdapter {
     }
 
     try {
+      // 提示词优化(Context-IR)已统一放到 ComfyUI 服务端节点内完成
+      // (comfyui-nodes/shotlib-h3-context-ir);云端直连链路不做优化,直接用原始提示词提交
       const body = this.transformRequest(request);
       const baseUrl = this.getVariantBaseUrl(modelId) || this.config.baseUrl!;
 

@@ -70,7 +70,8 @@
         "seed": true,
         "size_preset": false,
         "size_custom": true,
-        "max_resolution": "1920x1088"
+        "max_resolution": "1920x1088",
+        "context_ir": true
       },
       "priceType": "free",
       "concurrent_limit": 1,
@@ -97,7 +98,8 @@
         "seed": true,
         "size_preset": false,
         "size_custom": true,
-        "max_resolution": "1920x1088"
+        "max_resolution": "1920x1088",
+        "context_ir": true
       },
       "priceType": "free",
       "concurrent_limit": 1
@@ -123,7 +125,8 @@
         "seed": true,
         "size_preset": false,
         "size_custom": true,
-        "max_resolution": "1920x1088"
+        "max_resolution": "1920x1088",
+        "context_ir": true
       },
       "priceType": "free",
       "concurrent_limit": 1

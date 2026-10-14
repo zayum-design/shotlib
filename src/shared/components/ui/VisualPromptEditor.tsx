@@ -696,7 +696,9 @@ export const VisualPromptEditor: React.FC<VisualPromptEditorProps> = ({
           if (!charId) return name;
           const portraitIdx = el.getAttribute('data-portrait-index') || '';
           const idxAttr = portraitIdx ? ` portrait-index="${portraitIdx}"` : '';
-          return `@<portrait character-id="${charId}"${idxAttr}>${name}</portrait>`;
+          // 多视图托底 pill：portrait-index 指向 multiViewImages，序列化时透传 multi-view 标记
+          const mvAttr = el.getAttribute('data-multiview') === '1' ? ' multi-view="1"' : '';
+          return `@<portrait character-id="${charId}"${idxAttr}${mvAttr}>${name}</portrait>`;
         }
         if (el.getAttribute('data-asset-tag') === 'true') {
           const name = el.getAttribute('data-name') || '';

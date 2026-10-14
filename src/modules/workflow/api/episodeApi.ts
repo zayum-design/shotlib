@@ -257,6 +257,91 @@ export async function generateEpisodesApi(
   }
 }
 
+// ============ 流式生成片段（深度思考） ============
+
+/** 片段生成流事件：思考增量 / 正文增量 / 完成 / 失败 */
+export type EpisodeStreamEvent =
+  | { type: 'reasoning'; delta: string }
+  | { type: 'content'; delta: string }
+  | { type: 'done'; episodes: any[] }
+  | { type: 'error'; message: string };
+
+/**
+ * 流式生成片段（深度思考）：与非流式 generateEpisodesApi 同构的过滤/组装
+ * （分集形象照过滤、previousEndingState、事件分桶），推理思考逐事件下发。
+ */
+export async function generateEpisodesStreamApi(
+  script: string,
+  characters: Character[],
+  scenes: Scene[],
+  model: string,
+  episodeNumber: number | undefined,
+  maxEpisodeDuration: number | undefined,
+  props: Prop[] | undefined,
+  handlers: { onEvent: (ev: EpisodeStreamEvent) => void; onError?: (err: Error) => void },
+): Promise<void> {
+  // 与 generateEpisodesApi 相同的角色/场景/道具过滤（分集形象照过滤 + 形象照清单注入）
+  const episodeCharacters = episodeNumber !== undefined
+    ? filterCharacterPortraitsByEpisode(characters, episodeNumber)
+    : characters;
+  const filteredCharacters = episodeCharacters.map((c) => {
+    const portraitNames = (c.fullBodyImages || [])
+      .filter((img: any) => img?.name && img.imageUrl)
+      .map((img: any) => img.name);
+    const portraitInfo = portraitNames.length > 0
+      ? `\n可用形象照: ${portraitNames.join('、')}`
+      : '';
+    return {
+      id: c.id,
+      name: c.name,
+      description: (c.description || '') + portraitInfo,
+      avatarUrl: c.avatarImages?.[c.currentAvatarIndex || 0]?.imageUrl,
+      fullBodyUrl: c.multiViewImages?.[0]?.imageUrl,
+    };
+  });
+  const filteredScenes = scenes.map((s) => ({
+    id: s.id,
+    name: s.name,
+    description: s.description,
+    imageUrl: s.imageUrls?.[0],
+  }));
+  const filteredProps = (props || []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    imageUrl: p.resolvedImageUrls?.[0] || p.imageUrls?.[0],
+  }));
+
+  try {
+    const previousEndingState = await resolvePreviousEndingState(
+      getProjectId(),
+      episodeNumber,
+    );
+    const episodes = await aiModelService.generateEpisodesStream(
+      model || 'deepseek',
+      {
+        script,
+        characters: filteredCharacters,
+        scenes: filteredScenes,
+        props: filteredProps,
+        previousEndingState,
+        eventBuckets: buildEpisodeOutlineText(script, episodeNumber) || '',
+        maxEpisodeDuration,
+      },
+      {
+        onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+        onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+      },
+    );
+    handlers.onEvent({ type: 'done', episodes: episodes as unknown as any[] });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    console.error('[episodeApi] 流式生成分镜片段失败:', error);
+    handlers.onEvent({ type: 'error', message: messageText });
+    handlers.onError?.(error instanceof Error ? error : new Error(messageText));
+  }
+}
+
 // ============ 片段视频生成 API ============
 
 export interface GenerateEpisodeVideoRequest {
@@ -399,7 +484,7 @@ export async function generateEpisodeVideoApi(
     console.error('[episodeApi] 生成视频失败:', error);
     return {
       success: false,
-      message: '系统繁忙，请稍后再试',
+      message: error?.message || '系统繁忙，请稍后再试',
       data: {
         videoUrl: '',
         taskId: error?.taskId || '',
@@ -459,7 +544,7 @@ export async function generateEpisodeVideoWithFramesApi(
     console.error('[episodeApi] 使用首尾帧生成视频失败:', error);
     return {
       success: false,
-      message: '系统繁忙，请稍后再试',
+      message: error?.message || '系统繁忙，请稍后再试',
       data: {
         videoUrl: '',
         taskId: error?.taskId || '',
@@ -533,7 +618,7 @@ export async function generateEpisodeVideoWithReferencesApi(
     console.error('[episodeApi] 使用全能参考生成视频失败:', error);
     return {
       success: false,
-      message: '系统繁忙，请稍后再试',
+      message: error?.message || '系统繁忙，请稍后再试',
       data: {
         videoUrl: '',
         taskId: error?.taskId || '',
@@ -581,10 +666,9 @@ export async function queryVideoTaskStatusApi(
   projectId?: string,
 ): Promise<ApiResponse<QueryVideoTaskResponse>> {
   void episodeId;
-  void projectId;
 
   try {
-    const result = await videoQueryTaskStatus(taskId, modelId);
+    const result = await videoQueryTaskStatus(taskId, modelId, projectId);
     return {
       success: true,
       data: {

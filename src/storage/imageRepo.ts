@@ -25,6 +25,9 @@
  */
 import { idbGet, idbSet, idbDel, idbKeys } from './db';
 import { stripBase64Fields } from './serialize';
+import { uploadBlobToOss } from '@/ai/services/oss-upload.service';
+import { settingsRepo } from './settingsRepo';
+import { useLogStore } from '@/shared/stores/logStore';
 import type { ImageAssetRecord, ApiResult } from './types';
 
 /** 缓存中存放本地地址的保留键(对齐原 service 层行为) */
@@ -35,6 +38,9 @@ const imageDataCache = new Map<string, Record<string, any>>();
 
 /** objectURL 缓存:assetId → blob URL(跨项目共享,项目切换时统一 revoke) */
 const objectUrlCache = new Map<string, string>();
+
+/** 懒补传 OSS 的去重表:assetId → 补传 Promise(并发 resolve 不重复上传) */
+const ossHealing = new Map<string, Promise<string | null>>();
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -57,13 +63,14 @@ export const imageRepo = {
   },
 
   /**
-   * 为记录解析可展示 URL:
+   * ensureUrl 的解析优先级(为记录解析可展示 URL):
    * 1. 优先 OSS 持久地址(data.ossUrl)——数据层与显示层统一,跨刷新/跨设备有效
-   * 2. 无 OSS 时优先稳定远程 URL(remoteUrl/originalUrl):自建 ComfyUI /view 等地址
-   *    不会短期过期,跨刷新/跨会话仍可用。
-   * 3. 短期签名 URL(火山/阿里云等带签名过期参数)则本地 Blob → objectURL,
-   *    避免签名过期后无法显示;objectURL 仅当前会话有效。
-   * 4. 无 Blob 仍 fallback 到 originalUrl/remoteUrl
+   * 2. 有本地 Blob 且已配置 OSS:补传 OSS 并回写 data.ossUrl(healToOss,同资产并发
+   *    去重)——优先于稳定远程,历史记录(含 ComfyUI /view 地址)统一转 OSS,
+   *    不再依赖 ComfyUI 服务器存留。
+   * 3. 无 Blob 或补传失败:稳定远程 URL(remoteUrl/originalUrl,如 ComfyUI /view)。
+   * 4. 仍未配置 OSS 且有 Blob:降级本地 Blob → objectURL,仅当前会话有效。
+   * 5. 兜底 originalUrl/remoteUrl
    */
   /**
    * 判断远程 URL 是否为稳定地址(非短期签名 URL)。
@@ -93,7 +100,17 @@ export const imageRepo = {
       return ossUrl;
     }
 
-    // 稳定远程 URL 优先(自建 ComfyUI /view 等),跨刷新有效
+    // OSS 补传优先于稳定远程:配置了 OSS 时,历史记录(含 ComfyUI /view 地址)统一
+    // 转为持久 OSS 地址,不再依赖 ComfyUI 服务器存留。
+    if (record.blob) {
+      const healed = await this.healToOss(assetId, record);
+      if (healed) {
+        objectUrlCache.set(assetId, healed);
+        return healed;
+      }
+    }
+
+    // 无 Blob 或补传失败:稳定远程 URL(自建 ComfyUI /view 等),跨刷新有效
     const stableRemote = [record.remoteUrl, record.originalUrl, record.data?.original_url]
       .find((u) => this.isStableRemoteUrl(u));
     if (stableRemote) {
@@ -101,15 +118,58 @@ export const imageRepo = {
       return stableRemote;
     }
 
-    let url: string | undefined;
+    // 未配置 OSS / 补传失败:降级 blob objectURL(仅当前会话有效)
     if (record.blob) {
-      url = URL.createObjectURL(record.blob);
+      const url = URL.createObjectURL(record.blob);
       objectUrlCache.set(assetId, url);
-    } else {
-      url = record.originalUrl || record.remoteUrl || record.data?.original_url || undefined;
-      if (url) objectUrlCache.set(assetId, url);
+      return url;
     }
+
+    const url = record.originalUrl || record.remoteUrl || record.data?.original_url || undefined;
+    if (url) objectUrlCache.set(assetId, url);
     return url;
+  },
+
+  /**
+   * 把本地 blob 补传为 OSS 持久地址并回写 data.ossUrl。
+   * @returns OSS 公共 URL;未配置 OSS 或上传失败返回 null(调用方降级)
+   */
+  async healToOss(assetId: string, record: ImageAssetRecord): Promise<string | null> {
+    // 并发去重:同一资产展示多次只补传一次
+    const inflight = ossHealing.get(assetId);
+    if (inflight) return inflight;
+
+    const promise = (async () => {
+      const { oss } = await settingsRepo.get();
+      if (!oss?.bucket || !oss.accessKeyId || !oss.accessKeySecret || !record.blob) return null;
+      const ossUrl = await uploadBlobToOss(
+        record.blob,
+        oss,
+        `shotlib/${record.projectId}/${record.assetType || 'generated_image'}`,
+        assetId,
+      );
+      await imageRepo.patchData(record.projectId, assetId, { ossUrl });
+      useLogStore.getState().addLog({
+        level: 'success',
+        source: 'oss',
+        url: ossUrl,
+        message: `本地图片已补传 OSS(转为持久远程地址): ${ossUrl.slice(0, 120)}`,
+      });
+      return ossUrl;
+    })().finally(() => {
+      ossHealing.delete(assetId);
+    });
+
+    ossHealing.set(assetId, promise);
+    return promise.catch((e) => {
+      useLogStore.getState().addLog({
+        level: 'error',
+        source: 'oss',
+        error: e instanceof Error ? e.message : String(e),
+        message: `本地图片补传 OSS 失败,降级为会话内 blob 地址: ${(e as Error).message.slice(0, 150)}`,
+      });
+      return null;
+    });
   },
 
   /** 回收单个 assetId 的 objectURL(删除/重新生成后调用) */

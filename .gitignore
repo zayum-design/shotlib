@@ -150,3 +150,9 @@ logs/
 # macOS
 .DS_Store
 docs/*.json
+.claude
+.gstack
+.push
+
+# Python 编译缓存
+__pycache__/

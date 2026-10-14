@@ -12,11 +12,66 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { useEffect, useRef } from 'react';
 import { useLoadingStore } from '@/shared/stores/useLoadingStore';
+
+/** 深度思考过程滚动区（流式生成时逐行显示模型思考） */
+const ThinkingLines: React.FC = () => {
+  const thinkingLines = useLoadingStore((s) => s.thinkingLines);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // 新行到达自动滚到底
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [thinkingLines.length]);
+
+  if (thinkingLines.length === 0) return null;
+
+  return (
+    <div
+      style={{
+        width: 'min(640px, 86vw)',
+        maxHeight: '240px',
+        overflowY: 'auto',
+        padding: '4px 8px',
+        textAlign: 'left',
+      }}
+    >
+      <div
+        style={{
+          fontSize: '11px',
+          fontWeight: 600,
+          color: 'var(--accent-primary)',
+          marginBottom: '8px',
+          letterSpacing: '0.05em',
+        }}
+      >
+        💭 深度思考（按剧本铁律 / 梗概 / 背景 / 人物关系自检）
+      </div>
+      {thinkingLines.map((line, i) => (
+        <div
+          key={`${i}-${line.slice(0, 8)}`}
+          style={{
+            fontSize: '12px',
+            lineHeight: '1.7',
+            color: 'var(--text-secondary)',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            animation: 'gl-fade-in 0.3s ease-out',
+          }}
+        >
+          {line}
+        </div>
+      ))}
+      <div ref={bottomRef} />
+    </div>
+  );
+};
 
 /**
  * 全局 Loading 覆盖层
- * 炫酷效果：多层旋转光环 + 中心脉冲发光球 + 渐变文字 + 可选进度条
+ * 炫酷效果：多层旋转光环 + 中心脉冲发光球 + 渐变文字 + 可选进度条 + 深度思考流
  */
 export const GlobalLoading: React.FC = () => {
   const { isOpen, title, description, progress, showProgress } = useLoadingStore();
@@ -223,6 +278,9 @@ export const GlobalLoading: React.FC = () => {
               </p>
             )}
           </div>
+
+          {/* 深度思考过程滚动区（流式生成时逐行显示） */}
+          <ThinkingLines />
 
           {/* 底部进度条 */}
           {showProgress && (

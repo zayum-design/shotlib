@@ -19,7 +19,7 @@ import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { WorkflowStep } from '@/modules/workflow/components/WorkflowContainer';
 import { ScriptInput } from '@/modules/workflow/components/steps/ScriptInput';
 import { ScriptReview } from '@/modules/workflow/components/steps/ScriptReview';
-import { ScriptSplit } from '@/modules/workflow/components/steps/ScriptSplit';
+import { ScriptSplit, EpisodeDeepThinkingSwitch } from '@/modules/workflow/components/steps/ScriptSplit';
 import { EpisodeGenerate } from '@/modules/workflow/components/steps/EpisodeGenerate';
 import { VideoCompose } from '@/modules/workflow/components/steps/VideoCompose';
 import { SimplifiedEpisodeFlow } from '@/modules/workflow/components/SimplifiedEpisodeFlow';
@@ -210,7 +210,7 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
           {/* 右侧内容区 */}
           {/* min-w-0：允许 flex 子项收缩，内部宽内容（如片段时间线）在容器内滚动而非撑开页面 */}
           <div className="flex-1 min-w-0 pl-24 max-md:pl-0">
-            {/* Step 1: 剧本输入 */}
+            {/* Step 1: 剧本输入（剧本模型选择在 ScriptInput 底部生成按钮前） */}
             {localCurrentStep === 0 && (
               <WorkflowStep
                 stepNumber={1}
@@ -218,26 +218,6 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                 description={steps[0].description}
                 status={getStepStatus(0)}
                 isActive={true}
-                extra={
-                  <div className="flex items-center gap-2 max-md:flex-wrap">
-                    <span className="text-xs text-text-muted">剧本模型:</span>
-                    <Select
-                      value={textModel}
-                      onChange={setTextModel}
-                      disabled={!!script}
-                      options={(textModels || []).map((m) => ({
-                        value: m.id,
-                        label: (
-                          <Tooltip title={m.description}>
-                            <span>{m.name}</span>
-                          </Tooltip>
-                        ),
-                        disabled: m.disabled,
-                      }))}
-                      size="small" popupMatchSelectWidth={false} />
-                    <ModelPriceTag model={(textModels || []).find(m => m.id === textModel)} />
-                  </div>
-                }
                 stepIcon={<FileText size={20} />}
                 customIcon={isGeneratingScript ? <Loader2 size={20} className="animate-spin" /> : undefined}
               >
@@ -245,7 +225,7 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
               </WorkflowStep>
             )}
 
-            {/* Step 2: 剧本编辑 */}
+            {/* Step 2: 剧本编辑（剧本模型选择在 ScriptReview 底部右下角） */}
             {localCurrentStep === 1 && (
               <WorkflowStep
                 stepNumber={2}
@@ -255,24 +235,6 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                 isActive={true}
                 extra={
                   <div className="flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
-                    <div className="flex items-center gap-2 max-md:flex-wrap">
-                      <span className="text-xs text-text-muted">剧本模型:</span>
-                      <Select
-                        value={textModel}
-                        onChange={setTextModel}
-                        options={textModels.map((m) => ({
-                          value: m.id,
-                          label: (
-                            <Tooltip title={m.description}>
-                              <span>{m.name}</span>
-                            </Tooltip>
-                          ),
-                          disabled: m.disabled,
-                        }))}
-
-                        size="small" popupMatchSelectWidth={false} />
-                      <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
-                    </div>
                     {/* 校验修改剧本：第2集+ 同样可用（分解后锁定禁用） */}
                     <ScriptReviewButton disabled={!script || currentStep >= 2} />
                     <Button
@@ -304,26 +266,6 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                 isActive={true}
                 extra={
                   <div className="flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
-                    {/* 剧本模型选择 */}
-                    <div className="flex items-center gap-2 max-md:flex-wrap">
-                      <span className="text-xs text-text-muted">剧本模型:</span>
-                      <Select
-                        value={textModel}
-                        onChange={setTextModel}
-                        options={textModels.map((m) => ({
-                          value: m.id,
-                          label: (
-                            <Tooltip title={m.description}>
-                              <span>{m.name}</span>
-                            </Tooltip>
-                          ),
-                          disabled: m.disabled,
-                        }))}
-
-                        size="small" popupMatchSelectWidth={false} />
-                      <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
-                    </div>
-
                     {/* 校验修改按钮：对分解后角色/场景的提示词进行校验和修改（已生成片段后锁定禁用） */}
                     <AssetPromptReviewButton disabled={episodesCount > 0 || !hasScriptSplitData} />
 
@@ -395,6 +337,8 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                         size="small" popupMatchSelectWidth={false} />
                       <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
                     </div>
+                    {/* 片段深度思考开关：开启且模型为推理模型时，生成/重新生成片段走流式深度思考分解 */}
+                    <EpisodeDeepThinkingSwitch />
                     {/* 校验修改按钮：对片段/分镜提示词进行校验和修改（无片段时禁用） */}
                     <EpisodePromptReviewButton disabled={episodesCount === 0} />
                     <Button

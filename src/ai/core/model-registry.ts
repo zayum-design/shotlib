@@ -95,6 +95,8 @@ export interface ModelInfo {
   concurrentLimit?: number;
   ipm?: number;
   recommended?: boolean;
+  /** 推理模型（支持深度思考流式生成） */
+  reasoning?: boolean;
 }
 
 const PROVIDER_CONFIGS: ProviderConfig[] = [
@@ -194,6 +196,7 @@ export function getEnabledModelInfos(disabledProviders?: string[]): ModelInfo[] 
         concurrentLimit: variant.concurrent_limit,
         ipm: variant.ipm,
         recommended: variant.recommended,
+        reasoning: (variant as Record<string, unknown>).reasoning === true,
       });
     }
   }

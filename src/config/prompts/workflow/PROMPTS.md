@@ -8,18 +8,21 @@
 ## FULLBODY
 
 生成目标：真实实拍质感的人物三视图设定图，纯白背景，无场景环境。
-三视图组成：要求在同一张图中，按从左至右的顺序，依次生成同一人物的 正面、侧面、背面 三个全身视图，必须全身照，脚部/鞋履按角色设定自然呈现（允许赤脚）。
-姿态要求：每个视图均为自然放松的站立姿态，双臂自然下垂，无僵硬动作。
-表情要求：面部呈现自然柔和的表情，神态生动真实，避免呆板或夸张；表情为平静放松的自然微情绪，嘴巴自然闭合，不刻意摆拍，眼神有自然神态、不空洞。
+三视图组成：要求在同一张图中，按从左至右的顺序，依次生成同一人物的 正面、侧面、背面 三个全身视图，三视图等高排列、间距均匀。必须全身照，脚部/鞋履按角色设定自然呈现（允许赤脚）。
+姿态要求：每个视图均为自然放松的直立站姿，双臂自然垂于身侧，无僵硬动作。
+面部要求（无脸处理）：人物面部一律不呈现眼睛、眉毛、鼻子、嘴部等任何五官细节，正面与侧面视图的面部区域均为平滑的皮肤色过渡（类似无脸人台），仅保留头部轮廓与发型；严禁生成具体五官。
 真实质感要求：保留自然皮肤纹理、轻微毛孔、自然唇纹与真实眼下结构，严禁磨皮、过度美颜与塑料质感；头发自然蓬松、允许少量碎发；面部高光与阴影过渡自然，画面清晰但不过度锐化，整体贴近普通人手机原相机照片的真实质感，拒绝精致商业写真的假面感。
-一致性要求：同一人物在三个视图中，五官、肤色、发型、身材比例、服装配饰必须 100% 统一，无透视畸变。
-画面规范：统一光影、比例，三视图等高排列，间距均匀，纯白背景，无场景、无环境元素、无文字、无水印、无 UI 元素。
-负面提示词（Negative Prompt）：half body, cropped, missing feet, cut off legs
+一致性要求：同一人物在三个视图中，体型、肤色、发型轮廓、身材比例、服装配饰必须 100% 统一，无透视畸变。
+着装要求：人物必须穿着完整、得体且符合角色设定的服装——包括上衣、裤子/裙子/下装与鞋履，服装覆盖身体躯干与四肢。
+
+画面规范：统一光影、比例，三视图等高排列，间距均匀，纯浅灰或纯白无缝背景，无场景、无环境元素、无文字、无水印、无 UI 元素。
+
+负面提示词（Negative Prompt）：half body, cropped, missing feet, cut off legs, nude, naked, no pants, no clothes, missing clothes, exposed body, underwear only, bare chest, bare legs, bare buttocks, topless, bottomless, undressed, revealing clothes, ripped clothes, torn outfit
 
 
 ## REGENERATE
 
-Character reference sheet with 4 views (front, side 90, side 45, back) in one image. Full body standing pose. Pure white background, no scene environment. Variation {{variation}}.
+Character reference sheet in one image, arranged left-to-right as: front full-body view, side full-body view, back full-body view, equally spaced and aligned. Upright standing pose with arms naturally at ease. Full body views must include feet/footwear. All views are FACELESS: no eyes, eyebrows, nose or mouth details — smooth blank skin tone on the face (mannequin-like), head silhouette and hairstyle intact. Pure light-gray seamless background, no scene environment. Variation {{variation}}. Autorealistic body texture and outfit fidelity preserved.
 Photorealistic natural human texture: preserve real skin texture with subtle pores, natural lip lines and authentic under-eye structure — strictly no skin smoothing, no over-beautification, no plastic look. Calm, relaxed micro-expression with mouth naturally closed, not posed. Natural fluffy hair with a few loose strands, lively natural eyes. Soft natural highlight-shadow transitions on the face, sharp but not over-sharpened. Casual everyday phone-camera realism, not a polished commercial studio look.
 
 ## EXPAND

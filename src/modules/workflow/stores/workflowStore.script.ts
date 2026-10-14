@@ -258,6 +258,103 @@ ${topic}
     const { addTask, completeTask, failTask, incrementPollCount, removeTask } = useTaskQueueStore.getState();
     const taskId = addTask({ type: 'script-generate', name: `生成剧本: ${actualTopic}`, status: 'running', prompt: topic, modelVariant: textModel });
     try {
+      // ===== 深度思考分流：用户开关开启且模型为 reasoning 变体时走流式生成，
+      // loading 中逐行展示思考过程（默认关闭） =====
+      const isReasoningModel = (get().textModels || []).find((m) => m.id === textModel)?.reasoning === true;
+      if (get().scriptDeepThinking === true && isReasoningModel) {
+        loading.setDescription('深度思考中，思考过程将逐行显示...');
+
+        // 深度思考增量 → loading 思考行管道：按换行切行逐行展示，流结束后 flush 残留
+        let thinkBuffer = '';
+        const thinking = {
+          push(delta: string) {
+            thinkBuffer += delta;
+            const parts = thinkBuffer.split('\n');
+            thinkBuffer = parts.pop() || '';
+            for (const p of parts) {
+              const t = p.trim();
+              if (t) loading.appendThinkingLine(t);
+            }
+          },
+          flush() {
+            if (thinkBuffer.trim()) {
+              loading.appendThinkingLine(thinkBuffer.trim());
+              thinkBuffer = '';
+            }
+          },
+        };
+        const streamResult: { done?: { script: string; summary: string } } = {};
+        let streamError: string | null = null;
+
+        await workflowApi.generateScriptStreamApi(
+          {
+            topic: actualTopic,
+            model: textModel,
+            agentType,
+            skills,
+            subStyle,
+            artStyle,
+            isEnding,
+            genre: genre || undefined,
+            creationMode: get().creationMode || undefined,
+          },
+          {
+            onEvent: (ev) => {
+              if (ev.type === 'reasoning') {
+                thinking.push(ev.delta);
+              } else if (ev.type === 'done') {
+                streamResult.done = { script: ev.script, summary: ev.summary };
+              } else if (ev.type === 'error') {
+                streamError = ev.message;
+              }
+            },
+            onError: (e) => {
+              streamError = e.message || '网络异常';
+            },
+          },
+        );
+        thinking.flush();
+
+        if (streamError) {
+          failTask(taskId, streamError);
+          message.error(`剧本生成失败: ${streamError}`);
+          return false;
+        }
+        if (streamResult.done?.script) {
+          const { script, summary: generatedSummary } = streamResult.done;
+          // ===== 跨项目切换校验 =====
+          const currentProjectId = get().currentProjectId;
+          if (startedProjectId && startedProjectId !== currentProjectId) {
+            console.warn(`[generateScript] 项目已切换(${startedProjectId} -> ${currentProjectId})，不更新当前 workflowStore`);
+            saveWorkflowStateToLocal(startedProjectId, startedEpisodeNumber, { ...get(), script, summary: generatedSummary });
+            completeTask(taskId, { script, summary: generatedSummary });
+            return true;
+          }
+
+          const state = get();
+          const isSimplified = state.isSimplifiedMode;
+          set({ script, summary: generatedSummary });
+          // 手动触发持久化（v2 格式）- 先保存到 localStorage
+          saveWorkflowStateToLocal(startedProjectId || 'default', startedEpisodeNumber, { ...state, script, summary: generatedSummary });
+          try {
+            await saveToServer({ ...state, script, summary: generatedSummary });
+          } catch (e: any) {
+            console.warn('[generateScript] 云端同步失败（非阻塞）:', e?.message || e);
+          }
+          if (!isSimplified) {
+            set({ currentStep: 1 });
+            notifyScriptGenerated();
+          }
+          message.success('剧本生成成功');
+          completeTask(taskId, { script, summary: generatedSummary });
+          saveGuard.clearResetMark();
+          return true;
+        }
+        failTask(taskId, '流式连接中断');
+        message.error('剧本生成失败: 流式连接中断，请重试');
+        return false;
+      }
+
       // 使用异步模式，将剧本生成任务放入队列
       const enqueueResponse = await workflowApi.generateScriptApi(
         actualTopic, textModel, agentType, skills, false, subStyle, artStyle, true, isEnding, genre || undefined, get().creationMode || undefined,
@@ -394,7 +491,7 @@ ${topic}
   return doGenerate();
 },
 
-reviewScript: async (mode: 'review' | 'modify', requirement?: string) => {
+reviewScript: async (mode: 'review' | 'modify' | 'audience-review', requirement?: string, audiences?: string[]) => {
   const { script, summary, textModel } = get();
   if (!script.trim()) {
     message.warning('剧本内容为空，无法校验或修改');
@@ -404,21 +501,35 @@ reviewScript: async (mode: 'review' | 'modify', requirement?: string) => {
     message.warning('请输入修改要求');
     return null;
   }
+  if (mode === 'audience-review' && !(audiences || []).some((a) => a?.trim())) {
+    message.warning('请选择或输入至少一个目标受众群体');
+    return null;
+  }
 
   // 记录当前项目ID，用于后续校验防止跨项目数据污染
   const startedProjectId = get().currentProjectId;
   const startedEpisodeNumber = get().currentEpisodeNumber ?? 1;
-  const taskLabel = mode === 'modify' ? '修改剧本' : '校验审阅剧本';
+  const taskLabel = mode === 'modify' ? '修改剧本' : mode === 'audience-review' ? '观众审阅剧本' : '校验审阅剧本';
 
   set({ isReviewingScript: true });
   const loading = useLoadingStore.getState();
   loading.show({ title: `正在${taskLabel}...`, description: '请稍候，这可能需要一分钟左右' });
   const { addTask, completeTask, failTask, incrementPollCount, removeTask } = useTaskQueueStore.getState();
   const taskId = addTask({ type: 'script-review', name: taskLabel, status: 'running', prompt: requirement || summary?.substring(0, 200), modelVariant: textModel });
+  // 角色清单（审阅时注入 {{characterList}} 启用角色清单覆盖检测）
+  const state0 = get();
+  const reviewCharacters = (state0.characters || []).map((c: any) => ({
+    name: c.name,
+    age: c.age,
+    gender: c.gender,
+    description: c.description,
+  }));
   try {
     // 使用异步模式，将任务放入队列
     const enqueueResponse = await workflowApi.reviewScriptApi(
       script, summary || '', mode, requirement, textModel, true, get().creationMode || undefined,
+      mode === 'review' ? reviewCharacters : undefined,
+      mode === 'audience-review' ? audiences : undefined,
     );
 
     if (!enqueueResponse.success) {
@@ -456,14 +567,19 @@ reviewScript: async (mode: 'review' | 'modify', requirement?: string) => {
       return null;
     }
 
-    // 校验审阅：直接返回审阅报告，由调用方展示
-    if (mode === 'review') {
+    // 校验审阅/观众审阅：直接返回审阅报告，由调用方展示；角色清单修订建议存入 lastCharacterSuggestions
+    // (观众审阅无角色清单建议,lastCharacterSuggestions 恒为 null)
+    if (mode === 'review' || mode === 'audience-review') {
       const report = resultData.report || '';
       if (!report) {
         failTask(taskId, '任务完成但未返回审阅报告');
         message.error('任务完成但未返回审阅报告');
         return null;
       }
+      const suggestions =
+        (resultData as { characterSuggestions?: import('@/ai/services/ai-model.dto').CharacterRevisionSuggestions })
+          .characterSuggestions || null;
+      set({ lastCharacterSuggestions: suggestions });
       message.success('校验审阅完成');
       completeTask(taskId, { text: '校验审阅完成' });
       return report;
@@ -521,6 +637,123 @@ applyModifiedScript: async (newScript: string) => {
     console.warn('[applyModifiedScript] 云端同步失败（非阻塞）:', e?.message || e);
   }
   message.success('剧本修改已应用');
+},
+
+/**
+ * 补充缺失角色（校验审阅报告的「补充缺失角色」按钮触发）：
+ * 按剧本生成完整角色条目，追加到角色清单并立即持久化。
+ * 返回补充成功的角色数；0 表示未补充（全部与现有角色重名）
+ */
+completeMissingCharacters: async (missing: Array<{ name: string; age?: string; gender?: string; stage?: string; description?: string; firstAppearance?: string }>) => {
+  const state = get();
+  const { script, textModel } = state;
+  if (!script.trim() || missing.length === 0) return 0;
+
+  const response = await workflowApi.completeCharactersApi(script, missing, textModel);
+  if (!response.success) {
+    message.error(response.message || '补充缺失角色失败');
+    return 0;
+  }
+  const newCharacters = (response.data?.characters || []).filter(
+    (c: any) => c?.name && !(state.characters || []).some((existing: any) => existing.name === c.name),
+  );
+  if (newCharacters.length === 0) {
+    message.info('补充结果与现有角色重名，未追加新角色');
+    return 0;
+  }
+
+  const nextCharacters = [...(state.characters || []), ...newCharacters];
+  set({ characters: nextCharacters, lastCharacterSuggestions: null });
+
+  const projectId = state.currentProjectId || 'default';
+  const episodeNumber = state.currentEpisodeNumber ?? 1;
+  saveWorkflowStateToLocal(projectId, episodeNumber, { ...get(), characters: nextCharacters });
+  try {
+    await saveToServer({ ...get(), characters: nextCharacters });
+  } catch (e: any) {
+    console.warn('[completeMissingCharacters] 持久化失败（非阻塞）:', e?.message || e);
+  }
+  message.success(`已补充 ${newCharacters.length} 个角色：${newCharacters.map((c: any) => c.name).join('、')}`);
+  return newCharacters.length;
+},
+
+/**
+ * 应用角色改名建议（校验审阅报告的「应用角色改名」按钮触发）：
+ * 同步替换角色名、形象照名前缀与分集文本中的旧名（角色标签按 character-id 绑定，不受改名影响）。
+ * 返回应用成功的改名数
+ */
+applyCharacterRenames: async (renames: Array<{ from: string; to: string; reason?: string }>) => {
+  const state = get();
+  const validRenames = (renames || []).filter(
+    (r) => r?.from?.trim() && r?.to?.trim() && r.from !== r.to,
+  );
+  if (validRenames.length === 0) return 0;
+
+  // 全量文本替换（角色名之间相互独立，逐个 replace 旧名→新名）
+  const replaceNames = (text: string): string => {
+    if (!text) return text;
+    let result = text;
+    for (const r of validRenames) {
+      result = result.split(r.from).join(r.to);
+    }
+    return result;
+  };
+
+  const nextCharacters = (state.characters || []).map((c: any) => ({
+    ...c,
+    name: replaceNames(c.name),
+    // 形象照/多视图名称以角色名为前缀，同步替换前缀（如「林小满-童年-幼儿园装」→「林小满-青年-幼儿园装」）
+    fullBodyImages: (c.fullBodyImages || []).map((img: any) =>
+      img?.name ? { ...img, name: replaceNames(img.name) } : img,
+    ),
+    multiViewImages: (c.multiViewImages || []).map((img: any) =>
+      img?.name ? { ...img, name: replaceNames(img.name) } : img,
+    ),
+    avatarImages: (c.avatarImages || []).map((img: any) =>
+      img?.name ? { ...img, name: replaceNames(img.name) } : img,
+    ),
+  }));
+
+  // 分集数据：分镜提示词/对白/参考提示词中的角色名文本同步替换
+  //（@<role character-id>标签按 id 绑定不受影响，仅替换标签内展示名与纯文本引用）
+  const nextEpisodes = (state.episodes || []).map((ep: any) => ({
+    ...ep,
+    videoPrompt: replaceNames(ep.videoPrompt),
+    rawVideoPrompt: replaceNames(ep.rawVideoPrompt),
+    firstFramePrompt: replaceNames(ep.firstFramePrompt),
+    lastFramePrompt: replaceNames(ep.lastFramePrompt),
+    firstLastFrameVideoPrompt: replaceNames(ep.firstLastFrameVideoPrompt),
+    firstFrameDialogue: replaceNames(ep.firstFrameDialogue),
+    lastFrameDialogue: replaceNames(ep.lastFrameDialogue),
+    shots: (ep.shots || []).map((shot: any) => ({
+      ...shot,
+      prompt: replaceNames(shot.prompt),
+      referencePrompt: replaceNames(shot.referencePrompt),
+      rawReferencePrompt: replaceNames(shot.rawReferencePrompt),
+      dialogue: replaceNames(shot.dialogue),
+    })),
+  }));
+
+  set({
+    characters: nextCharacters,
+    episodes: nextEpisodes,
+    lastCharacterSuggestions: null,
+  });
+
+  const projectId = state.currentProjectId || 'default';
+  const episodeNumber = state.currentEpisodeNumber ?? 1;
+  saveWorkflowStateToLocal(projectId, episodeNumber, {
+    ...get(),
+    characters: nextCharacters,
+    episodes: nextEpisodes,
+  });
+  try {
+    await saveToServer({ ...get(), characters: nextCharacters, episodes: nextEpisodes });
+  } catch (e: any) {
+    console.warn('[applyCharacterRenames] 持久化失败（非阻塞）:', e?.message || e);
+  }
+  message.success(`已应用 ${validRenames.length} 条角色改名`);
+  return validRenames.length;
 },
 
 reviewAssetPrompts: async (mode: 'review' | 'modify', requirement?: string) => {
@@ -922,8 +1155,11 @@ applyEpisodePromptChanges: async (items: EpisodePromptChangeItem[]) => {
   message.success(`已应用 ${items.length} 条提示词修改`);
 },
 
-parseScript: async (options?: { replace?: boolean }) => {
+parseScript: async (options?: { replace?: boolean; deepThinking?: boolean }) => {
   const { script, textModel, imageModel } = get();
+  // 深度思考开关：显式传入优先，未传入时读取全局剧本深度思考开关（与剧本生成共用）
+  const useDeepThinking = options?.deepThinking !== undefined ? options.deepThinking : (get().scriptDeepThinking || false);
+  const isReasoningModel = (get().textModels || []).find(m => m.id === textModel)?.reasoning === true;
 
   const doGenerate = async () => {
     // 记录当前项目ID，用于后续校验防止跨项目数据污染
@@ -938,7 +1174,76 @@ parseScript: async (options?: { replace?: boolean }) => {
     const parsePrompt = script?.substring(0, 500) || '解析剧本';
     const taskId = addTask({ type: 'script-parse', name: '解析剧本', status: 'running', prompt: parsePrompt, modelVariant: textModel });
     try {
-      const response = await workflowApi.parseScriptApi(script, textModel, undefined, true);
+      // 注入续集年龄基线：已确立的角色（name+age）作为跨集年龄桶拆分判定的依据;
+      // 首次解析（无角色）时传空,模板的条件块自动移除
+      const previousCharacters = (get().characters || []).map((c: any) => ({
+        name: c.name,
+        age: c.age,
+      }));
+
+      let data: any;
+
+      // ===== 深度思考分流：开关开启且模型为 reasoning 变体时走流式解析，
+      // loading 中逐行展示思考过程（重新分解剧本与解析剧本共用） =====
+      if (useDeepThinking && isReasoningModel) {
+        loading.setDescription('深度思考中，思考过程将逐行显示...');
+        // 深度思考增量 → loading 思考行管道：按换行切行逐行展示，流结束后 flush 残留
+        let thinkBuffer = '';
+        const thinking = {
+          push(delta: string) {
+            thinkBuffer += delta;
+            const parts = thinkBuffer.split('\n');
+            thinkBuffer = parts.pop() || '';
+            for (const p of parts) {
+              const t = p.trim();
+              if (t) loading.appendThinkingLine(t);
+            }
+          },
+          flush() {
+            if (thinkBuffer.trim()) {
+              loading.appendThinkingLine(thinkBuffer.trim());
+              thinkBuffer = '';
+            }
+          },
+        };
+        const streamResult: { done?: any } = {};
+        let streamError: string | null = null;
+
+        await workflowApi.parseScriptStreamApi(
+          { script, model: textModel, previousCharacters },
+          {
+            onEvent: (ev) => {
+              if (ev.type === 'reasoning') {
+                thinking.push(ev.delta);
+              } else if (ev.type === 'done') {
+                streamResult.done = ev.data;
+              } else if (ev.type === 'error') {
+                streamError = ev.message;
+              }
+            },
+            onError: (e) => {
+              streamError = e.message || '网络异常';
+            },
+          },
+        );
+        thinking.flush();
+
+        if (streamError) {
+          failTask(taskId, streamError);
+          message.error(`解析失败: ${streamError}`);
+          return;
+        }
+        if (!streamResult.done) {
+          failTask(taskId, '流式连接中断');
+          message.error('解析失败: 流式连接中断，请重试');
+          return;
+        }
+        data = streamResult.done;
+      }
+
+      // ===== 普通模型：异步队列 / 同步模式 =====
+      if (!data) {
+      const response = await workflowApi.parseScriptApi(script, textModel, undefined, true, previousCharacters);
 
       if (!response.success) {
         failTask(taskId, '提交失败');
@@ -947,7 +1252,6 @@ parseScript: async (options?: { replace?: boolean }) => {
       }
 
       const jobData = response.data as any;
-      let data;
 
       if (jobData?.jobId) {
         const jobId = jobData.jobId;
@@ -971,6 +1275,7 @@ parseScript: async (options?: { replace?: boolean }) => {
       } else {
         // 同步模式回退
         data = response.data as any;
+      }
       }
 
       // ===== 续集资产兜底 =====

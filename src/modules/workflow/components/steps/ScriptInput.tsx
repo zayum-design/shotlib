@@ -13,9 +13,10 @@
 // limitations under the License.
 
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { Input, Button, Upload, Tag, Tooltip } from 'antd';
+import { Input, Button, Upload, Tag, Tooltip, Select, Modal, Switch } from 'antd';
 import { Upload as UploadIcon, Sparkles, ArrowRight, FileText, Brain, Wrench, Flame, ChevronDown, Palette, Shuffle, XCircle, Search, Compass, RotateCcw, Clapperboard } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { useWorkflowStore } from '../../stores/workflowStore';
 import { useAgentTypes, type SubStyleItem, type ArtStyleItem, type HotScriptItem } from '@/modules/workflow/hooks/useAgentTypes';
 import { useGenres, type GenreItem } from '@/modules/workflow/hooks/useGenres';
@@ -25,6 +26,42 @@ import { DevelopmentDirectionModal } from '@/modules/workflow/components/Develop
 import { message } from '@/shared/utils/message';
 
 const { TextArea } = Input;
+
+/**
+ * 剧本生成「深度思考」开关：开启且当前剧本模型为推理模型（reasoning）时，
+ * 生成剧本走流式深度思考（loading 逐行展示铁律/梗概/背景/人物关系自检过程）。
+ */
+export const ScriptDeepThinkingSwitch: React.FC = () => {
+  const scriptDeepThinking = useWorkflowStore((s) => s.scriptDeepThinking);
+  const setScriptDeepThinking = useWorkflowStore((s) => s.setScriptDeepThinking);
+  const textModel = useWorkflowStore((s) => s.textModel);
+  const textModels = useWorkflowStore((s) => s.textModels);
+  const isGeneratingScript = useWorkflowStore((s) => s.isGeneratingScript);
+  // 仅推理模型可用（配置源判定，非模型名推断）
+  const modelSupports =
+    (textModels || []).find((m) => m.id === textModel)?.reasoning === true;
+
+  return (
+    <Tooltip
+      title={
+        modelSupports
+          ? '开启后生成剧本走深度思考流式：模型先按铁律/梗概/背景/人物关系逐项自检再输出终稿，思考过程逐行显示'
+          : '当前剧本模型不支持深度思考，请切换为推理模型'
+      }
+      placement="top"
+    >
+      <span className="inline-flex items-center gap-1.5 text-xs text-text-muted select-none">
+        深度思考
+        <Switch
+          size="small"
+          checked={scriptDeepThinking && modelSupports}
+          disabled={!modelSupports || isGeneratingScript}
+          onChange={(checked) => setScriptDeepThinking(checked)}
+        />
+      </span>
+    </Tooltip>
+  );
+};
 
 interface ScriptInputProps {
   onStepChange?: (step: number) => void;
@@ -54,6 +91,9 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
     setGenre,
     setCreationMode,
     setIsEnding,
+    textModel,
+    textModels,
+    setTextModel,
 
   } = useWorkflowStore();
 
@@ -98,7 +138,7 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
     if (scripts.length === 0) return [];
     // 随机打乱数组，每次 randomSeed 变化时重新计算
     const shuffled = [...scripts].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, 3);
+    return shuffled.slice(0, 5);
   }, [subStyle, currentAgentType, randomSeed]);
 
   // 所有风格下的全部热门剧本（用于搜索）
@@ -227,11 +267,52 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
   };
 
   const handleHotScriptClick = (content: string) => {
+    // 已生成剧本:输入配置已锁定,禁止热门剧本覆盖话题(防止误触改掉已定稿内容)
+    if (isLocked) {
+      message.warning('剧本已生成,输入配置已锁定。如需更换剧本,请重新生成后再选择');
+      return;
+    }
+    // 未生成但已有话题:二次确认覆盖,避免误触丢失已输入内容
+    if (topic.trim()) {
+      Modal.confirm({
+        title: '确认用热门剧本覆盖当前话题？',
+        content: '话题输入框已有内容，确认后将被热门剧本内容替换（当前输入不会被保存）',
+        okText: '确认覆盖',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: () => {
+          setTopic(content);
+          message.info('热门剧本已填充到输入框');
+        },
+      });
+      return;
+    }
     setTopic(content);
     message.info('热门剧本已填充到输入框');
   };
 
   const handleDirectionClick = (category: DevelopmentCategory, direction: DevelopmentDirection) => {
+    // 已生成剧本:配置锁定,禁止覆盖
+    if (isLocked) {
+      message.warning('剧本已生成,输入配置已锁定。如需更换剧本,请重新生成后再选择');
+      setDirectionModalOpen(false);
+      return;
+    }
+    if (topic.trim()) {
+      Modal.confirm({
+        title: '覆盖当前输入内容?',
+        content: '输入话题或故事梗概已有内容,选择发展方向将替换它(当前内容不会被保存)',
+        okText: '替换',
+        cancelText: '取消',
+        onOk: () => {
+          setTopic(direction.name);
+          setIsEnding(direction.isEnding);
+          message.info(direction.isEnding ? '已选择大结局方向' : '已选择分集发展方向');
+          setDirectionModalOpen(false);
+        },
+      });
+      return;
+    }
     setTopic(direction.name);
     setIsEnding(direction.isEnding);
     message.info(direction.isEnding ? '已选择大结局方向' : '已选择分集发展方向');
@@ -496,19 +577,42 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
             <label className="block text-sm font-medium text-text-secondary">
               {isInherited ? '主题或故事方向（基于上一集剧情续写）' : '输入话题或故事梗概'}
             </label>
-            <Button
-              type="text"
-              size="small"
-              icon={<Compass size={14} />}
-              loading={loadingDirections}
-              onClick={() => {
-                setDirectionModalOpen(true);
-              }}
-              disabled={isLocked}
-              className="text-text-muted hover:text-accent-primary"
-            >
-              发展方向
-            </Button>
+            <div className="flex items-center gap-1">
+              {/* 上传剧本：紧跟话题输入框标题（暂时禁用） */}
+              {!isInherited && (
+                <Tooltip title="功能暂未开放">
+                  <Upload
+                    accept=".txt,.doc,.docx,.md"
+                    beforeUpload={() => false}
+                    showUploadList={false}
+                    disabled
+                  >
+                    <Button
+                      type="text"
+                      size="small"
+                      disabled
+                      icon={<UploadIcon size={14} />}
+                      className="text-text-muted"
+                    >
+                      上传剧本
+                    </Button>
+                  </Upload>
+                </Tooltip>
+              )}
+              <Button
+                type="text"
+                size="small"
+                icon={<Compass size={14} />}
+                loading={loadingDirections}
+                onClick={() => {
+                  setDirectionModalOpen(true);
+                }}
+                disabled={isLocked}
+                className="text-text-muted hover:text-accent-primary"
+              >
+                发展方向
+              </Button>
+            </div>
           </div>
           <TextArea
             value={topic}
@@ -526,16 +630,36 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
           )}
         </div>
 
-        {/* 热门剧本推荐 */}
-        {hotScripts.length > 0 && !isInherited && (
+        {/* 热门剧本推荐(剧本生成后配置锁定,隐藏避免误触覆盖话题)：
+            标题后同一行展示 5 个预制剧本标题标签，悬停查看简介，避免大卡片误点击 */}
+        {hotScripts.length > 0 && !isInherited && !isLocked && (
           <div>
-            <div className="flex items-center justify-between mb-3 max-md:flex-col max-md:items-start max-md:gap-2">
-              <label className="flex items-center text-sm font-medium text-text-secondary">
-                <Flame size={16} className="mr-2 text-orange-500" />
+            <div className="flex items-center flex-wrap gap-2">
+              <label className="flex items-center text-sm font-medium text-text-secondary whitespace-nowrap">
+                <Flame size={16} className="mr-1 text-orange-500" />
                 热门剧本推荐
-                <span className="ml-2 text-xs text-text-muted">点击即可使用</span>
+                <span className="ml-1 text-xs text-text-muted">点击使用，悬停查看简介</span>
               </label>
-              <div className="flex items-center gap-2">
+              {hotScripts.slice(0, 5).map((script: HotScriptItem, index: number) => (
+                <Tooltip
+                  key={index}
+                  placement="top"
+                  title={
+                    <div className="max-w-xs whitespace-pre-wrap text-xs leading-relaxed">
+                      {script.content}
+                    </div>
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleHotScriptClick(script.content)}
+                    className="px-2.5 py-1 rounded-full border border-border bg-bg-tertiary text-xs text-text-secondary hover:border-accent-primary/50 hover:text-accent-primary transition-colors max-w-[160px] truncate"
+                  >
+                    {script.title}
+                  </button>
+                </Tooltip>
+              ))}
+              <div className="flex items-center gap-2 ml-auto max-md:ml-0">
                 {/* 搜索框 */}
                 <div ref={searchRef} className="relative">
                   <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-bg-tertiary border border-border hover:border-accent-primary/50 transition-colors">
@@ -603,33 +727,6 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {hotScripts.slice(0, 3).map((script: HotScriptItem, index: number) => (
-                <motion.button
-                  key={index}
-                  type="button"
-                  onClick={() => handleHotScriptClick(script.content)}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-bg-tertiary border border-border rounded-lg p-4 text-left hover:border-accent-primary/50 transition-all group"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-text-primary truncate">
-                      {script.title}
-                    </span>
-                    <span className="text-xs text-text-muted">{script.clicks} 次使用</span>
-                  </div>
-                  <p className="text-sm text-text-secondary line-clamp-2">
-                    {script.content}
-                  </p>
-                  <div className="mt-3 text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-                    点击填充 →
-                  </div>
-                </motion.button>
-              ))}
-            </div>
           </div>
         )}
 
@@ -673,25 +770,29 @@ export const ScriptInput: React.FC<ScriptInputProps> = ({ onStepChange }) => {
       </div>
 
       {/* 底部按钮区域 */}
-      <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
-        {/* 上传剧本按钮：仅在第1集显示 */}
-        {!isInherited && (
-          <Upload
-            accept=".txt,.doc,.docx,.md"
-            beforeUpload={isLocked ? () => false : handleFileUpload}
-            showUploadList={false}
-            disabled={isLocked}
-          >
-            <Button
-              size="large"
-              disabled={isLocked}
-              icon={<UploadIcon size={18} />}
-              className="bg-bg-tertiary border-border"
-            >
-              上传剧本
-            </Button>
-          </Upload>
-        )}
+      <div className="flex items-center justify-end gap-3 pt-4 border-t border-border max-md:flex-wrap">
+        {/* 剧本模型选择（生成剧本按钮前，随按钮组右对齐，选择后 Step1 生成与 Step2 重新生成共用此模型） */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-muted whitespace-nowrap">剧本模型:</span>
+          <Select
+            value={textModel}
+            onChange={setTextModel}
+            disabled={isGeneratingScript}
+            options={(textModels || []).map((m) => ({
+              value: m.id,
+              label: (
+                <Tooltip title={m.description}>
+                  <span>{m.name}</span>
+                </Tooltip>
+              ),
+              disabled: m.disabled,
+            }))}
+            size="small" popupMatchSelectWidth={false}
+          />
+          <ModelPriceTag model={(textModels || []).find(m => m.id === textModel)} />
+          {/* 剧本深度思考开关：开启且模型为推理模型时走流式深度思考（思考过程逐行显示） */}
+          <ScriptDeepThinkingSwitch />
+        </div>
 
         {/* 主操作按钮：生成剧本 / 下一步 */}
         {!isInherited && script && !isParsed && (

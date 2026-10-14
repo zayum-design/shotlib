@@ -27,6 +27,7 @@ import type {
   SceneInfo,
   Shot,
   Episode,
+  CharacterRevisionSuggestions,
 } from './ai-model.dto';
 import {
   translateShotType,
@@ -38,6 +39,9 @@ import {
 import { promptLoader } from '@/ai/prompts/prompt-loader';
 import { lyricsGenerator } from './lyrics-generation.service';
 import { splitScriptByActs, countBeats } from './script-act.utils';
+import { findProviderByVariantId, getVariantConfig, getProviderReasoningTokenBuffer } from '@/ai/core/model-registry';
+import { settingsRepo } from '@/storage/settingsRepo';
+import { providerFetch } from '@/ai/core/client';
 
 export class AIModelService {
   // 前端版无 DI:直接引用模块级单例
@@ -104,6 +108,246 @@ export class AIModelService {
         `生成剧本失败: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /**
+   * 深度思考流式生成剧本(开源版:浏览器直连 OpenAI 兼容流式端点):
+   * - 提示词与非流式 generateScript 完全一致,附加深度思考自检引导
+   * - 推理链增量(reasoning_content)与正文增量(content)逐事件下发
+   * - 完成后提取 {script, summary},与非流式结果同构
+   * 调用方负责展示思考行(loading 思考行管道)。
+   */
+  async generateScriptStream(
+    modelId: string,
+    options: ScriptGenerationOptions,
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<{ script: string; summary: string }> {
+    const startTime = Date.now();
+    console.log(`[AIModelService] 流式深度思考生成剧本 model=${modelId}, 话题: ${options.topic.slice(0, 50)}`);
+
+    // 与非流式 generateScript 同构的提示词 + 深度思考自检引导
+    const systemPrompt = this.buildScriptGenerationPrompt(modelId, options);
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出剧本前先在思考中逐项自检：1. 剧本铁律(对白密度/结构格式/单集约束)逐条核对；',
+      '2. 与故事梗概/上一集剧情逐点比对(事件顺序/核心台词/情绪落点)；3. 时代与文化背景细节；',
+      '4. 人物关系与动机一致性。思考中形成的问题清单与终稿结论一致后再输出剧本。',
+    ].join('\n');
+    const userText = `${options.topic}${thinkingInstruction}`;
+
+    const content = await this.streamOpenAICompatible(
+      modelId,
+      systemPrompt,
+      userText,
+      { temperature: 0.8, max_tokens: 12000 },
+      handlers,
+    );
+
+    if (!content.trim()) {
+      throw new Error('模型返回内容为空（推理链可能耗尽输出预算），请重试或切换其他模型');
+    }
+    console.log(`[AIModelService] 流式生成完成 model=${modelId}, content长度=${content.length}, 总耗时=${Date.now() - startTime}ms`);
+    return this.extractScriptAndSummary(content);
+  }
+
+  /**
+   * 深度思考流式生成片段(按幕拆分,与非流式 generateEpisodes 同构):
+   * 每幕流式调用,推理链增量逐事件下发;完成后的解析/enrich/覆盖率校验与非流式一致。
+   */
+  async generateEpisodesStream(
+    modelId: string,
+    options: EpisodeGenerationOptions,
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<Episode[]> {
+    console.log(`[AIModelService] 流式深度思考生成片段 model=${modelId}`);
+
+    const acts = splitScriptByActs(options.script);
+    const totalBeats = countBeats(options.script);
+    console.log(`[AIModelService] 剧本拆分幕数: ${acts.length}, 片段节拍数: ${totalBeats}`);
+
+    // 深度思考自检引导(片段分解):节拍覆盖/提示词一致性/资产引用/时长
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出 JSON 前先在思考中逐项自检：1. 本幕所有【片段节拍N】是否全部覆盖、无遗漏无合并；',
+      '2. 每个镜头提示词与剧本原文的场面调度/台词/情绪是否一致；',
+      '3. 【角色:】【场景:】【形象照:】标记是否与清单名称逐字一致；',
+      '4. 分镜时长合计是否在片段时长上限内。思考中形成的问题清单与终稿结论一致后再输出。',
+    ].join('\n');
+
+    let allEpisodes: any[] = [];
+    let previousEndingState = options.previousEndingState || '';
+
+    for (const act of acts) {
+      console.log(`[AIModelService] 流式生成第 ${act.actNumber}/${acts.length} 幕, previousEndingState长度=${previousEndingState.length}`);
+      const systemPrompt = this.buildEpisodeGenerationPrompt(
+        modelId,
+        options,
+        act,
+        acts.length,
+        previousEndingState,
+      );
+      const userText = `剧本：\n${act.content}${thinkingInstruction}`;
+      // 与非流式对齐:非火山模型传 response_format json_object 确保输出纯 JSON
+      const isVolcEngineModel = /volcengine|doubao/.test(modelId);
+      const content = await this.streamOpenAICompatible(
+        modelId,
+        systemPrompt,
+        userText,
+        {
+          temperature: 0.7,
+          max_tokens: 16000,
+          responseFormat: isVolcEngineModel ? undefined : { type: 'json_object' },
+        },
+        handlers,
+      );
+      const parsedData = this.parseEpisodeGenerationResponse(content);
+      if (parsedData.__repaired === true) {
+        throw new Error(`第 ${act.actNumber} 幕生成结果不完整（输出被截断后修复），请重试`);
+      }
+      const actEpisodes = parsedData.episodes || [];
+      if (!actEpisodes || actEpisodes.length === 0) {
+        throw new Error(`第 ${act.actNumber} 幕未生成任何片段，请重试`);
+      }
+      allEpisodes = allEpisodes.concat(actEpisodes);
+      const lastEpisode = actEpisodes[actEpisodes.length - 1];
+      previousEndingState = this.extractActEndingState(lastEpisode);
+    }
+
+    // 覆盖率校验与非流式一致
+    if (totalBeats > 0 && allEpisodes.length < Math.ceil(totalBeats * 0.7)) {
+      throw new Error(
+        `生成结果不完整：剧本共 ${totalBeats} 个片段节拍，但只生成 ${allEpisodes.length} 个片段，请重试`,
+      );
+    }
+
+    const timestamp = Date.now();
+    const characterInfos: CharacterInfo[] = (options.characters || []).map((c) => ({
+      id: c.id || '',
+      name: c.name || '',
+      description: c.description,
+      avatarUrl: c.avatarUrl || (c.avatarUrls && c.avatarUrls[0]),
+      fullBodyUrl:
+        c.fullBodyUrl ||
+        (c.fullBodyUrls && c.fullBodyUrls[0]) ||
+        (c.fullBodyImages && c.fullBodyImages[0]?.imageUrl),
+    }));
+    const sceneInfos: SceneInfo[] = (options.scenes || []).map((s) => ({
+      id: s.id || '',
+      name: s.name || '',
+      description: s.description,
+      imageUrl: s.imageUrl || (s.imageUrls && s.imageUrls[0]),
+    }));
+    return this.enrichEpisodes(
+      allEpisodes,
+      timestamp,
+      characterInfos,
+      sceneInfos,
+      options.maxEpisodeDuration === 30 ? 30 : 15,
+    );
+  }
+
+  /**
+   * OpenAI 兼容流式调用(浏览器直连 {baseUrl}/chat/completions + stream:true,走厂商代理策略):
+   * SSE 逐帧解析 reasoning_content / content 增量并透传 handlers,返回完整正文。
+   * max_tokens 为正文预算,自动追加推理预算(推理链与正文共享输出预算,与适配器
+   * 的 reasoningTokenBuffer 逻辑对齐)并夹在变体 maxOutputTokens 上限内——
+   * 深度思考的推理链很长,预算不足时正文为空/截断,JSON 提取必然失败。
+   */
+  private async streamOpenAICompatible(
+    modelId: string,
+    systemPrompt: string,
+    userText: string,
+    params: { temperature?: number; max_tokens?: number; responseFormat?: { type: 'json_object' } },
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<string> {
+    const providerId = findProviderByVariantId(modelId);
+    if (!providerId) throw new Error(`未知模型: ${modelId},请确认已在「设置」页启用对应厂商`);
+    const apiKey = await settingsRepo.getApiKey(providerId);
+    if (!apiKey) throw new Error('未配置 API Key,请在「设置」页填写');
+    const variant = getVariantConfig(modelId) as
+      | { baseUrl?: string; maxOutputTokens?: number }
+      | undefined;
+    const baseUrl = variant?.baseUrl || '';
+    if (!baseUrl) throw new Error(`模型 ${modelId} 未配置 baseUrl`);
+
+    // 输出预算 = 正文预算 + 推理预算,再夹到变体上限(对齐适配器 transformRequest 逻辑)
+    const reasoningBuffer = getProviderReasoningTokenBuffer(providerId);
+    let maxTokens = (params.max_tokens ?? 12000) + reasoningBuffer;
+    const variantMax = variant?.maxOutputTokens;
+    if (variantMax && maxTokens > variantMax) {
+      console.warn(`[AIModelService] 流式 max_tokens ${maxTokens} 超过上限 ${variantMax}(variant.maxOutputTokens),已截断`);
+      maxTokens = variantMax;
+    }
+
+    const response = await providerFetch(providerId, `${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: [
+          ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+          { role: 'user', content: userText },
+        ],
+        temperature: params.temperature,
+        max_tokens: maxTokens,
+        ...(params.responseFormat ? { response_format: params.responseFormat } : {}),
+        stream: true,
+      }),
+      timeout: 600000,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`流式生成失败: HTTP ${response.status} ${text.slice(0, 200)}`);
+    }
+    if (!response.body) throw new Error('流式生成失败: 响应无内容流');
+
+    // SSE 逐行解析:data: {...} 帧 → reasoning_content / content 增量;[DONE] 结束
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const chunk = JSON.parse(payload) as {
+            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
+          };
+          const delta = chunk.choices?.[0]?.delta;
+          if (!delta) continue;
+          if (delta.reasoning_content) handlers.onReasoning?.(delta.reasoning_content);
+          if (delta.content) {
+            content += delta.content;
+            handlers.onContent?.(delta.content);
+          }
+        } catch {
+          // 忽略格式异常的帧
+        }
+      }
+    }
+    return content;
   }
 
   /**
@@ -199,7 +443,10 @@ export class AIModelService {
     try {
       // 从模型目录加载提示词
       const promptStartTime = Date.now();
-      const systemPrompt = this.buildScriptParsingPrompt(modelId);
+      const systemPrompt = this.buildScriptParsingPrompt(
+        modelId,
+        options.previousCharacters,
+      );
       const promptTime = Date.now() - promptStartTime;
 
       // 使用统一SDK
@@ -241,34 +488,7 @@ export class AIModelService {
       const parsedData = this.parseScriptAnalysisResponse(
         response.data.content || '',
       );
-      const characters = this.enrichCharacters(
-        parsedData.characters || [],
-        parsedData.portraits || [],
-        timestamp,
-      );
-      const scenes = this.enrichScenes(parsedData.scenes || [], timestamp);
-      const props = this.enrichProps(
-        Array.isArray(parsedData.props) ? parsedData.props : [],
-        timestamp,
-      );
-      const era = this.enrichEra(parsedData.era || {}, timestamp);
-      const relationshipNetwork = this.enrichRelationshipNetwork(
-        parsedData.relationshipNetwork || {},
-        timestamp,
-        characters,
-      );
-
-      return {
-        characters,
-        scenes,
-        props,
-        era,
-        relationshipNetwork,
-        // 分集叙事纲要：新模板输出，旧数据/模型漏出时降级为空数组（向后兼容）
-        episodeOutlines: Array.isArray(parsedData.episodeOutlines)
-          ? parsedData.episodeOutlines
-          : [],
-      };
+      return this.buildParseResult(parsedData, timestamp);
     } catch (error) {
       console.error(`[AIModelService] 解析剧本失败:`, error);
       throw new Error(
@@ -277,21 +497,133 @@ export class AIModelService {
     }
   }
 
-  private buildScriptParsingPrompt(modelId: string): string {
-    // 加载模板
-    return this.promptLoader.loadPromptTemplate(
-      modelId,
-      'drama/script-parsing',
+  /** 解析结果统一 enrich（parseScript 与流式 parseScriptStream 共用） */
+  private buildParseResult(parsedData: any, timestamp: number) {
+    const characters = this.enrichCharacters(
+      parsedData.characters || [],
+      parsedData.portraits || [],
+      timestamp,
     );
+    const scenes = this.enrichScenes(parsedData.scenes || [], timestamp);
+    const props = this.enrichProps(
+      Array.isArray(parsedData.props) ? parsedData.props : [],
+      timestamp,
+    );
+    const era = this.enrichEra(parsedData.era || {}, timestamp);
+    const relationshipNetwork = this.enrichRelationshipNetwork(
+      parsedData.relationshipNetwork || {},
+      timestamp,
+      characters,
+    );
+    return {
+      characters,
+      scenes,
+      props,
+      era,
+      relationshipNetwork,
+      // 分集叙事纲要：新模板输出，旧数据/模型漏出时降级为空数组（向后兼容）
+      episodeOutlines: Array.isArray(parsedData.episodeOutlines)
+        ? parsedData.episodeOutlines
+        : [],
+    };
   }
 
   /**
-   * 校验审阅剧本：根据故事梗概对剧本进行合理性二次校验，输出审阅报告
+   * 深度思考流式解析剧本（与 parseScript 同构）：
+   * 同一 SCRIPT_PARSING 模板（含续集年龄基线）+ 解析自检引导 + json_object，
+   * 推理链增量逐事件下发；完成后的解析/enrich 与非流式完全一致。
+   */
+  async parseScriptStream(
+    modelId: string,
+    options: ScriptParsingOptions,
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<{
+    characters: any[];
+    scenes: any[];
+    props: any[];
+    era: any;
+    relationshipNetwork: any;
+    episodeOutlines: any[];
+  }> {
+    const startTime = Date.now();
+    console.log(`[AIModelService] 流式深度思考解析剧本 model=${modelId}`);
+
+    const systemPrompt = this.buildScriptParsingPrompt(
+      modelId,
+      options.previousCharacters,
+    );
+    // 解析深度思考引导：角色提取/场景/道具/关系/年龄桶自检
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出 JSON 前先在思考中逐项自检：1. 有名有姓且实际出场的人物是否全部提取、无遗漏无合并；',
+      '2. 同一人物跨年龄段（童年≤12/少年13-17/青年18-35/中年36-59/晚年≥60）是否按「姓名-年龄段」拆分，同桶未拆分；',
+      '3. 场景/道具/时代背景与剧本正文是否一致；4. 人物关系与形象照命名是否与角色名严格对应。思考中形成的问题清单与终稿一致后再输出。',
+    ].join('\n');
+    const userText = `${options.script}${thinkingInstruction}`;
+
+    const isVolcEngineModel = /volcengine|doubao/.test(modelId);
+    const content = await this.streamOpenAICompatible(
+      modelId,
+      systemPrompt,
+      userText,
+      {
+        temperature: 0.3,
+        max_tokens: 12000,
+        responseFormat: isVolcEngineModel ? undefined : { type: 'json_object' },
+      },
+      handlers,
+    );
+    if (!content.trim()) {
+      throw new Error('模型返回内容为空（推理链可能耗尽输出预算），请重试或切换其他模型');
+    }
+    const parsedData = this.parseScriptAnalysisResponse(content);
+    console.log(`[AIModelService] 流式解析完成 model=${modelId}, content长度=${content.length}, 总耗时=${Date.now() - startTime}ms`);
+    return this.buildParseResult(parsedData, Date.now());
+  }
+
+  private buildScriptParsingPrompt(
+    modelId: string,
+    previousCharacters?: Array<{ name: string; age?: string | number }>,
+  ): string {
+    // 加载模板;提供续集年龄基线时注入 {{previousCharacters}},模板按 {{#if}} 条件块启用
+    // 「续集年龄基线（跨集年龄桶拆分判定）」章节
+    const template = this.promptLoader.loadPromptTemplate(
+      modelId,
+      'drama/script-parsing',
+    );
+    const baseline = Array.isArray(previousCharacters) && previousCharacters.length > 0
+      ? previousCharacters
+          .map((c) => {
+            const parts = [c.name, c.age !== undefined && c.age !== null ? `${c.age}岁` : ''].filter(
+              Boolean,
+            );
+            return `- ${parts.join('，')}`;
+          })
+          .join('\n')
+      : '';
+    return this.promptLoader.renderTemplate(template, {
+      previousCharacters: baseline,
+    });
+  }
+
+  /**
+   * 校验审阅剧本：根据故事梗概对剧本进行合理性二次校验，输出审阅报告。
+   * 传入 characters（角色清单）时启用「角色清单覆盖检测」，并从报告中的
+   * ```json 块解析角色清单修订建议（缺失角色/跨桶改名），随报告一并返回。
    */
   async reviewScript(
     modelId: string,
-    options: { script: string; summary?: string; creationMode?: string },
-  ): Promise<string> {
+    options: {
+      script: string;
+      summary?: string;
+      creationMode?: string;
+      characters?: Array<{ name: string; age?: string | number; gender?: string; description?: string }>;
+    },
+  ): Promise<{ report: string; characterSuggestions?: CharacterRevisionSuggestions }> {
     const template = this.promptLoader.loadPromptTemplate(
       modelId,
       'drama/script-review',
@@ -303,17 +635,158 @@ export class AIModelService {
         : options.creationMode === 'mood'
           ? '情绪曲线与氛围统一性：核心情绪是否唯一且全片统一，建立→沉浸→峰值→余韵是否完整，核心意象是否复现呼应，有无空洞唯美空镜堆砌（本模式不强制剧情冲突与悬念）'
           : '节奏与钩子：开场是否有钩子，冲突推进是否紧凑，结尾是否留有悬念（付费短剧节奏）';
+    const characterList = Array.isArray(options.characters) && options.characters.length > 0
+      ? options.characters
+          .map((c) => {
+            const parts = [c.name, c.age, c.gender].filter(
+              (p) => p !== undefined && p !== null && String(p).trim() !== '',
+            );
+            return `- ${parts.join('，')}`;
+          })
+          .join('\n')
+      : '';
     const systemPrompt = this.promptLoader.renderTemplate(template, {
       summary:
         options.summary || '（未提供故事梗概，请仅基于剧本自身进行审阅）',
       reviewRhythmHint,
+      characterList:
+        characterList || '（未提供角色清单，角色清单覆盖检测项标记为不适用）',
     });
-    return this.callTextModel(
+    const report = await this.callTextModel(
       modelId,
       systemPrompt,
       options.script,
       '校验审阅剧本',
     );
+    return { report, characterSuggestions: this.extractCharacterSuggestions(report) };
+  }
+
+  /**
+   * 观众审阅剧本：按目标受众构建观众 agent，以观众视角"观看"剧本
+   * （追看意愿/情绪体验/弃剧风险/期待落差），汇总可执行的修改建议。
+   * @returns Markdown 观众审阅报告
+   */
+  async audienceReviewScript(
+    modelId: string,
+    options: { script: string; summary?: string; audiences?: string[] },
+  ): Promise<string> {
+    const template = this.promptLoader.loadPromptTemplate(
+      modelId,
+      'drama/script-audience-review',
+    );
+    const audienceList = (options.audiences || [])
+      .filter((a) => a && String(a).trim())
+      .map((a, i) => `${i + 1}. ${String(a).trim()}`)
+      .join('\n');
+    const systemPrompt = this.promptLoader.renderTemplate(template, {
+      summary:
+        options.summary || '（未提供故事梗概，请仅基于剧本自身进行审阅）',
+      audienceList:
+        audienceList || '（未指定目标群体，请按泛大众短剧受众审阅）',
+    });
+    return this.callTextModel(
+      modelId,
+      systemPrompt,
+      options.script,
+      '观众审阅剧本',
+    );
+  }
+
+  /**
+   * 从审阅报告中的 ```json 块提取角色清单修订建议（缺失角色 + 跨桶改名）。
+   * 无 JSON 块或解析失败时返回 undefined（不阻断审阅流程）。
+   */
+  private extractCharacterSuggestions(report: string): CharacterRevisionSuggestions | undefined {
+    try {
+      const blockMatch = report.match(/```json\s*([\s\S]*?)```/);
+      if (!blockMatch) return undefined;
+      const jsonText = extractJsonString(blockMatch[1]);
+      if (!jsonText) return undefined;
+      const parsed = JSON.parse(jsonText);
+      if (!parsed || typeof parsed !== 'object') return undefined;
+      const missingCharacters = Array.isArray(parsed.missingCharacters)
+        ? parsed.missingCharacters.filter((m: any) => m?.name)
+        : [];
+      const renames = Array.isArray(parsed.renames)
+        ? parsed.renames.filter((r: any) => r?.from && r?.to)
+        : [];
+      if (missingCharacters.length === 0 && renames.length === 0) return undefined;
+      return { missingCharacters, renames };
+    } catch (error) {
+      console.warn(
+        '[AIModelService] 提取角色清单修订建议失败，忽略:',
+        error instanceof Error ? error.message : error,
+      );
+      return undefined;
+    }
+  }
+
+  /**
+   * 补充缺失角色：按缺失清单基于剧本生成完整角色条目（与剧本解析字段一致）。
+   * @returns 补全的角色数组（已按角色规范 enrichment），失败抛错由调用方处理
+   */
+  async completeMissingCharacters(
+    modelId: string,
+    options: {
+      script: string;
+      missing: Array<{
+        name: string;
+        age?: string;
+        gender?: string;
+        stage?: string;
+        description?: string;
+        firstAppearance?: string;
+      }>;
+    },
+  ): Promise<{ characters: any[] }> {
+    const startTime = Date.now();
+    console.log(
+      `[AIModelService] 使用模型 ${modelId} 补充缺失角色，数量: ${options.missing.length}`,
+    );
+    const template = this.promptLoader.loadPromptTemplate(
+      modelId,
+      'drama/complete-characters',
+    );
+    const missingList = options.missing
+      .map((m, i) => {
+        const parts = [
+          `${i + 1}. 姓名：${m.name}`,
+          m.age ? `年龄：${m.age}` : '',
+          m.gender ? `性别：${m.gender}` : '',
+          m.stage ? `年龄阶段：${m.stage}` : '',
+          m.description ? `设定：${m.description}` : '',
+          m.firstAppearance ? `首次出场：${m.firstAppearance}` : '',
+        ].filter(Boolean);
+        return parts.join('，');
+      })
+      .join('\n');
+    const systemPrompt = this.promptLoader.renderTemplate(template, {
+      missingList,
+    });
+    const response = await this.modelSDK.process({
+      modelId,
+      taskType: 'text',
+      operation: 'generate',
+      input: { text: options.script },
+      systemPrompt,
+      parameters: { temperature: 0.3, maxTokens: 8000 },
+      options: { timeout: 600000 },
+    });
+    if (!response.success) {
+      throw new Error(response.error?.message || '补充缺失角色失败');
+    }
+    const content =
+      (response.data as { content?: string }).content || '';
+    const jsonText = extractJsonString(content);
+    if (!jsonText) throw new Error('补充缺失角色失败：未返回 JSON');
+    const parsedData = JSON.parse(jsonText) as { characters?: any[] };
+    const characters = Array.isArray(parsedData.characters)
+      ? parsedData.characters.filter((c) => c?.name)
+      : [];
+    console.log(
+      `[AIModelService] 补充缺失角色完成 model=${modelId}, 产出=${characters.length}, 总耗时=${Date.now() - startTime}ms`,
+    );
+    return { characters };
   }
 
   /**

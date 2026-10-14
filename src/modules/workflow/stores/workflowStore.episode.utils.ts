@@ -20,16 +20,30 @@ import type { Character, Scene, Episode, ModelConfig } from '@/shared/types/inde
 // ========== 视频提示词统一约束后缀 ==========
 // 提交视频生成时统一追加到提示词末尾，不再要求 LLM 写在 prompt 里、
 // 也不在提示词输入框中显示（存量数据中的旧后缀在显示层剥离）
+// 措辞对齐火山《Seedance 2.0/2.5 提示词指南》约束词模板：
+// - 无字幕/文字/Logo/水印（2.0 指南第 5 节约束词）
+// - 双胞胎完整约束（2.0 指南常见问题-双胞胎问题：禁止外形着装配饰完全一致的人物、单个对应人物）
+// - 人物正常人眼不发光（2.5 指南常见问题-情绪过度响应：瞳孔发光）
+// - 方言/普通话（短剧业务约束）
 export const VIDEO_PROMPT_SUFFIX =
-  '保持无字幕，不要生成水印，禁止双胞胎效果，除非提示词中明确要求方言，严禁出现方言，全部使用普通话';
+  '保持无字幕，不要生成任何文字、Logo 或水印，视频全程禁止出现外形、着装、配饰完全一致的人物，禁止同款分身与双胞胎效果，同一画面中每个角色仅保留单个对应人物，人物为正常人眼、不发光，除非提示词中明确要求方言，全部使用普通话，严禁出现方言';
 
 // 存量数据中历史后缀的构成短语（任意组合、任意顺序出现在句尾）
+// 新旧短语并列：strip 时新旧后缀都能幂等剥离，避免换版本后旧数据/手贴文本剥不干净
 const LEGACY_SUFFIX_PHRASES = [
+  // 旧版短语
   '保持无字幕',
   '不生成任何文字/字幕/水印/Logo',
   '不生成任何文字/字幕/水印/LOGO',
   '不要生成水印',
   '禁止双胞胎效果',
+  // 现版短语（含旧版共有的「保持无字幕」之外的增量部分）
+  '不要生成任何文字、Logo 或水印',
+  '视频全程禁止出现外形、着装、配饰完全一致的人物',
+  '禁止同款分身与双胞胎效果',
+  '同一画面中每个角色仅保留单个对应人物',
+  '人物为正常人眼、不发光',
+  '除非提示词中明确要求方言，全部使用普通话，严禁出现方言',
 ];
 
 /**
@@ -502,12 +516,26 @@ export function buildActingPrefix(characters?: any[], _episode?: any): string {
   // 未来可扩展：按角色个性追加差异化表演提示
   return `【表演指令--角色必须活着，不能只是张嘴】
 每个角色此刻都要有"想要"的目标和阻碍，用行为和微表情去追逐，不要展示情绪。
-脸部必须有真实微表情：眼皮跳动、嘴角微颤、眉峰收紧、瞳孔变化、真实眨眼；禁止面瘫、禁止僵直凝视、禁止玻璃状眼神。
+脸部必须有真实微表情，且随台词与事件持续变化：眼皮跳动、嘴角微颤、眉峰收紧、瞳孔变化、真实眨眼；同一角色的表情要有从起点到终点的变化过程，禁止从头到尾同一张脸；禁止面瘫、禁止僵直凝视、禁止玻璃状眼神。
+受伤与疼痛必须有身体反应：倒抽冷气、咬紧牙关、伤处肌肉抽搐、渗出冷汗、本能地护住伤口。
+听者与旁观者不是背景板：必须给出持续的微表情反应（皱眉、移开视线、抿嘴、喉结滚动），从对手台词中段就开始，而不是等对方说完才"开机"。
 身体必须有与处境匹配的动作：重心变化、手势、后撤/逼近、动作任务（手里在做事）；禁止站桩、禁止自然下垂的双手。
-倾听与反应：角色在对手台词结束之前就开始反应，而不是等对方说完才"开机"。
 情绪有余韵：强事件之后，颤抖的手、没焦的眼神、紧绷的肩膀要延续到下一个动作。
 地位与距离：谁压谁一头要写在身体上；两人距离的改变就是节拍改变。
-强者安静而静止，弱者忙乱且喊叫；威胁不带预备动作，暴力不预告就抵达。`;
+强者安静而静止，弱者忙乱且喊叫；威胁不带预备动作，暴力不预告就抵达。
+表情表演丰富自然，情绪通过眼神、嘴角、呼吸清晰可读。`;
+}
+
+/**
+ * 把衍生片段引导语（如「向后延续视频1，画面无缝延续，」）插入到【分镜时间线】之前。
+ * 引导语必须紧贴镜头内容——拼在表演指令大段规则之前会与镜头相隔数百字，
+ * 削弱模型对视频延长参照的引导响应。
+ */
+export function withDerivativeGuidance(prompt: string, guidance: string): string {
+  if (!guidance) return prompt;
+  return prompt.includes('【分镜时间线】')
+    ? prompt.replace('【分镜时间线】', `${guidance}\n【分镜时间线】`)
+    : `${guidance}${prompt}`;
 }
 
 export function buildUniversalReferenceRequest(
@@ -524,6 +552,9 @@ export function buildUniversalReferenceRequest(
   maxTotalDuration = 15,
   /** 道具列表：【道具:名】标记转换为 !<ref> 参考图标签（可选，不传则不转换） */
   props?: { id: string; name: string; imageUrls?: string[]; resolvedImageUrls?: string[] }[],
+  /** 衍生片段：上一片段视频公网 URL，作为视频延长任务的 reference_video（视频1）提交，
+   * 须排在参考视频数组首位，保证提示词[视频N]编号对应；与参考图/音频组合参考 */
+  derivativePrevVideoUrl?: string,
 ): UniversalReferenceData {
   // 统一把每个 shot.prompt 中的 `【角色:xxx】` / `【场景:xxx】` / `【道具:xxx】` 转换为结构化标签，
   // 确保 buildUniversalReferenceRequest 扫描时一定能识别参考图
@@ -548,7 +579,8 @@ export function buildUniversalReferenceRequest(
   const sceneIdToImageNum = new Map<string, number>();
   const referenceAudios: string[] = [];
   const referenceAudioMap: Record<string, string> = {};
-  const referenceVideos: string[] = [];
+  // 衍生片段（视频延长）：上一片段视频固定为视频1，附件视频其后编号
+  const referenceVideos: string[] = derivativePrevVideoUrl ? [derivativePrevVideoUrl] : [];
   const currentModelConfig = videoModels.find((m) => m.id === episode.model);
 
   // 视频/音频参考附件的模型能力判断（与下方 referenceModel 回退逻辑保持一致的目标模型选择）：
@@ -558,6 +590,9 @@ export function buildUniversalReferenceRequest(
     ? currentModelConfig
     : videoModels.find((m) => m.supports?.reference_image) ?? currentModelConfig;
   const supportsRefVideo = !!refTargetModelConfig?.supports?.reference_video;
+  if (derivativePrevVideoUrl && !supportsRefVideo) {
+    console.warn(`[buildUniversalReferenceRequest] 衍生片段需要视频延长能力，但模型 ${refTargetModelConfig?.id} 不支持 reference_video，接续将失效`);
+  }
   const supportsRefAudio = !!(
     refTargetModelConfig?.supports?.reference_audio ||
     refTargetModelConfig?.supports?.reference_voice
@@ -676,6 +711,13 @@ export function buildUniversalReferenceRequest(
       promptHead: (s.prompt || '').substring(0, 80),
     })),
   });
+  // 衍生片段（isDerivative）：上一片段视频尾帧图直接收集为图1（首帧软锚点，与视频1延长并用），
+  // 不依赖 prompt 中的衍生场景标签；分镜1记录首帧参考（formatter 加「文字首帧为图片1」）
+  if (derivativePrevVideoUrl && episode.firstFrameImageUrl) {
+    const imgNum = addImageUrl(episode.firstFrameImageUrl);
+    shotFirstFrameMap.set(0, imgNum);
+    console.log(`[buildUniversalReferenceRequest] 衍生片段尾帧首帧参考图 -> 图${imgNum}: ${episode.firstFrameImageUrl}`);
+  }
   if (shots.length > 0) {
     shots.forEach((shot, idx) => {
       // 1. 衍生场景标签 → 首帧参考图（尾帧图）
@@ -706,29 +748,43 @@ export function buildUniversalReferenceRequest(
     });
 
     shots.forEach((shot) => {
-      for (const m of shot.prompt.matchAll(/@<portrait\s+[^>]*character-id="([^"]+)"[^>]*portrait-index="(\d+)"[^>]*>/g)) {
+      for (const m of shot.prompt.matchAll(/@<portrait\s+[^>]*?character-id="([^"]+)"[^>]*?portrait-index="(\d+)"([^>]*)>/g)) {
         const charId = m[1];
         if (charIdToPortraitCostumeUrl.has(charId)) continue;
         const portraitIdx = parseInt(m[2], 10);
+        // multi-view="1"：多视图托底标注，portrait-index 指向 multiViewImages 而非 fullBodyImages
+        const isMultiViewTag = /multi-view="1"/.test(m[3] || '');
         const char = characters.find((c) => c.id === charId);
-        let portraitUrl = char?.fullBodyImages?.[portraitIdx]?.imageUrl || '';
+        let portraitUrl = isMultiViewTag
+          ? (char?.multiViewImages?.[portraitIdx] || char?.multiViewImages?.[0])?.imageUrl || ''
+          : char?.fullBodyImages?.[portraitIdx]?.imageUrl || '';
         let resolvedChar = char;
         // 显式引用的形象照被分集过滤清空时，从原始角色列表兜底解析
         if (!portraitUrl && unfilteredCharacters) {
           const rawChar = unfilteredCharacters.find((c) => c.id === charId);
-          portraitUrl = rawChar?.fullBodyImages?.[portraitIdx]?.imageUrl || '';
+          portraitUrl = isMultiViewTag
+            ? (rawChar?.multiViewImages?.[portraitIdx] || rawChar?.multiViewImages?.[0])?.imageUrl || ''
+            : rawChar?.fullBodyImages?.[portraitIdx]?.imageUrl || '';
           if (portraitUrl) resolvedChar = rawChar;
+        }
+        // 标签声称形象照但形象照无图、名字又是多视图托底时，同样回退多视图
+        if (!portraitUrl && !isMultiViewTag) {
+          const mv = char?.multiViewImages?.[portraitIdx] || char?.multiViewImages?.[0];
+          if (mv?.imageUrl) portraitUrl = mv.imageUrl;
         }
         if (portraitUrl) {
           const finalPortraitUrl = portraitUrl;
           charIdToPortraitCostumeUrl.set(charId, finalPortraitUrl);
           const imgNum = addImageUrl(finalPortraitUrl);
           charIdToPortraitImageNum.set(charId, imgNum);
-          // 记录本片使用的形象照年龄变体（供 addCharImages 切换同年龄头像参考）
-          const portraitName = char?.fullBodyImages?.[portraitIdx]?.name
-            || unfilteredCharacters?.find((c) => c.id === charId)?.fullBodyImages?.[portraitIdx]?.name;
-          const ageVariant = extractAgeVariant(portraitName);
-          if (ageVariant !== undefined) charIdToAgeVariant.set(charId, ageVariant);
+          // 记录本片使用的形象照年龄变体（供 addCharImages 切换同年龄头像参考）；
+          // 多视图托底无年龄语义，跳过
+          if (!isMultiViewTag) {
+            const portraitName = char?.fullBodyImages?.[portraitIdx]?.name
+              || unfilteredCharacters?.find((c) => c.id === charId)?.fullBodyImages?.[portraitIdx]?.name;
+            const ageVariant = extractAgeVariant(portraitName);
+            if (ageVariant !== undefined) charIdToAgeVariant.set(charId, ageVariant);
+          }
         }
       }
     });

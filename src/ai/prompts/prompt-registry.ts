@@ -94,8 +94,16 @@ export const PROMPT_TYPE_REGISTRY: Record<string, PromptTypeEntry> = {
     description: '剧本分解为结构化 JSON(角色/场景/时代/关系/形象照/分集纲要)',
   },
   'drama/script-review': {
-    description: '剧本校验审阅(含 AI 味检测维度)',
-    requiredVars: ['summary'],
+    description: '剧本校验审阅(含 AI 味检测与角色清单覆盖检测)',
+    requiredVars: ['summary', 'characterList'],
+  },
+  'drama/script-audience-review': {
+    description: '观众审阅:按目标受众构建观众 agent 以观众视角审阅(追看意愿/爽点/弃剧风险)',
+    requiredVars: ['summary', 'audienceList'],
+  },
+  'drama/complete-characters': {
+    description: '按缺失角色清单补全角色条目(avatarPrompt/imagePrompt/description)',
+    requiredVars: ['missingList'],
   },
   'drama/script-modify': {
     description: '按修改要求输出完整修改后剧本(含反 AI 味红线)',

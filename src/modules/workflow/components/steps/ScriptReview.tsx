@@ -16,6 +16,7 @@ import { Button, Input, Modal, Select, Tooltip } from 'antd';
 import { ArrowRight, RotateCcw, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useWorkflowStore } from '../../stores/workflowStore';
+import { ScriptDeepThinkingSwitch } from './ScriptInput';
 import { ScriptReviewButton } from '../ScriptReviewButton';
 import { message } from '@/shared/utils/message';
 import { ModelPriceTag } from '@/shared/utils/modelPrice';
@@ -123,11 +124,31 @@ export const ScriptReview: React.FC<ScriptReviewProps> = ({ onStepChange }) => {
           </div>
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between max-md:flex-wrap max-md:gap-2">
           <label className="text-sm font-medium text-text-secondary">
             故事梗概
           </label>
-          <span className="text-xs text-text-muted">{summary.length} 字符</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-muted">{summary.length} 字符</span>
+            {/* 剧本模型选择（Step1 生成 / 重新生成剧本 / 剧本分解共用） */}
+            <span className="text-xs text-text-muted">剧本模型:</span>
+            <Select
+              value={textModel}
+              onChange={setTextModel}
+              disabled={isLocked}
+              options={(textModels || []).map((m) => ({
+                value: m.id,
+                label: (
+                  <Tooltip title={m.description}>
+                    <span>{m.name}</span>
+                  </Tooltip>
+                ),
+                disabled: m.disabled,
+              }))}
+              size="small" popupMatchSelectWidth={false}
+            />
+            <ModelPriceTag model={(textModels || []).find(m => m.id === textModel)} />
+          </div>
         </div>
 
         <TextArea
@@ -145,36 +166,17 @@ export const ScriptReview: React.FC<ScriptReviewProps> = ({ onStepChange }) => {
           </label>
           <div className="flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
             <span className="text-xs text-text-muted">{script.length} 字符</span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-text-muted">剧本模型:</span>
-              <Select
-                value={textModel}
-                onChange={setTextModel}
-                disabled={isLocked}
-                options={(textModels || []).map((m) => ({
-                  value: m.id,
-                  label: (
-                    <Tooltip title={m.description}>
-                      <span>{m.name}</span>
-                    </Tooltip>
-                  ),
-                  disabled: m.disabled,
-                }))}
-                size="small" popupMatchSelectWidth={false}
-              />
-              <ModelPriceTag model={(textModels || []).find(m => m.id === textModel)} />
-              <ScriptReviewButton disabled={isLocked} />
-              <Button
-                size="small"
-                disabled={isLocked}
-                onClick={handleRegenerateScriptOnly}
-                loading={isGeneratingScript}
-                icon={<RotateCcw size={12} />}
-                className="text-text-muted hover:text-accent-primary"
-              >
-                重新生成剧本
-              </Button>
-            </div>
+            <ScriptReviewButton disabled={isLocked} />
+            <Button
+              size="small"
+              disabled={isLocked}
+              onClick={handleRegenerateScriptOnly}
+              loading={isGeneratingScript}
+              icon={<RotateCcw size={12} />}
+              className="text-text-muted hover:text-accent-primary"
+            >
+              重新生成剧本
+            </Button>
           </div>
         </div>
 
@@ -200,17 +202,41 @@ export const ScriptReview: React.FC<ScriptReviewProps> = ({ onStepChange }) => {
         >
           返回上一步
         </Button>
-        <Button
-          type="primary"
-          size="large"
-          onClick={handleNext}
-          loading={isParsingScript}
-          icon={<ArrowRight size={18} />}
-          iconPlacement="end"
-          className="bg-gradient-to-r from-accent-primary to-accent-secondary border-0"
-        >
-          下一步：剧本分解
-        </Button>
+        <div className="flex items-center gap-3 max-md:w-full max-md:justify-end">
+          {/* 剧本分解所用的文本模型（右对齐紧贴分解按钮；Step1 生成与重新生成共用此模型） */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-muted whitespace-nowrap">剧本模型:</span>
+            <Select
+              value={textModel}
+              onChange={setTextModel}
+              disabled={isParsingScript}
+              options={(textModels || []).map((m) => ({
+                value: m.id,
+                label: (
+                  <Tooltip title={m.description}>
+                    <span>{m.name}</span>
+                  </Tooltip>
+                ),
+                disabled: m.disabled,
+              }))}
+              size="small" popupMatchSelectWidth={false}
+            />
+            <ModelPriceTag model={(textModels || []).find(m => m.id === textModel)} />
+          </div>
+          {/* 剧本深度思考开关：开启且模型为推理模型时，剧本分解（解析）走流式深度思考 */}
+          <ScriptDeepThinkingSwitch />
+          <Button
+            type="primary"
+            size="large"
+            onClick={handleNext}
+            loading={isParsingScript}
+            icon={<ArrowRight size={18} />}
+            iconPlacement="end"
+            className="bg-gradient-to-r from-accent-primary to-accent-secondary border-0"
+          >
+            下一步：剧本分解
+          </Button>
+        </div>
       </motion.div>
 
     </div>

@@ -659,7 +659,7 @@ export function WorkflowPage() {
 
   // 构建完整项目数据（包含所有分集）
 
-  // 下载数据：先自动同步到云端，再打包下载 zip（包含 workflow-cloud.json）
+  // 下载数据：纯前端打包 zip（workflow-cloud.json 远程版 + workflow.json 本地版内联 data URL）
 
   // 将后端返回的云端 workflowData 应用到本地状态（更新资产 URL 为云端地址）
 

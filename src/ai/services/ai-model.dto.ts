@@ -40,6 +40,21 @@ export interface ScriptGenerationOptions {
 
 export interface ScriptParsingOptions {
   script: string;
+  /** 前面分集已确立的角色清单（name+age 年龄基线）：续集解析时据此判定同名角色跨年龄桶拆分命名 */
+  previousCharacters?: Array<{ name: string; age?: string | number }>;
+}
+
+/** 校验审阅产出的角色清单修订建议（缺失角色 + 跨桶改名） */
+export interface CharacterRevisionSuggestions {
+  missingCharacters: Array<{
+    name: string;
+    age?: string;
+    gender?: string;
+    stage?: string;
+    description?: string;
+    firstAppearance?: string;
+  }>;
+  renames: Array<{ from: string; to: string; reason?: string }>;
 }
 
 // 片段生成相关接口

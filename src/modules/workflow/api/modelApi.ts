@@ -62,6 +62,8 @@ export interface ModelInfo {
   ipm?: number;
   /** 推荐模型标记(model.json variant.recommended) */
   recommended?: boolean;
+  /** 推理模型(model.json variant.reasoning,支持深度思考流式生成) */
+  reasoning?: boolean;
 }
 
 export interface GetModelsResponse {

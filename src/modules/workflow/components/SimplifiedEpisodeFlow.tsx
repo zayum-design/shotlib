@@ -22,6 +22,7 @@ import { SimplifiedScriptSplit } from './SimplifiedScriptSplit';
 import { ScriptReviewButton } from './ScriptReviewButton';
 import { AssetPromptReviewButton } from './AssetPromptReviewButton';
 import { EpisodePromptReviewButton } from './EpisodePromptReviewButton';
+import { EpisodeDeepThinkingSwitch } from './steps/ScriptSplit';
 import { DevelopmentDirectionModal } from './DevelopmentDirectionModal';
 import type { SimplifiedPanel } from './EpisodeSidebarSteps';
 import { message } from '@/shared/utils/message';
@@ -134,7 +135,8 @@ const SimplifiedEpisodeFlowInner: React.FC<SimplifiedEpisodeFlowProps> = ({
       message.warning('剧本内容不能为空');
       return;
     }
-    await parseScript();
+    // 本页「深度思考」开关（episodeDeepThinking）同时控制解析与片段生成两条流式链路
+    await parseScript({ deepThinking: useWorkflowStore.getState().episodeDeepThinking });
     onPanelChange?.('split');
   };
 
@@ -413,6 +415,8 @@ const SimplifiedEpisodeFlowInner: React.FC<SimplifiedEpisodeFlowProps> = ({
                   size="small" popupMatchSelectWidth={false} />
                 <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
               </div>
+              {/* 片段深度思考开关：开启且模型为推理模型时，生成/重新生成片段走流式深度思考分解 */}
+              <EpisodeDeepThinkingSwitch />
               {/* 校验修改片段/分镜提示词：与第1集 step4 步骤头部同一功能（无片段时禁用） */}
               <EpisodePromptReviewButton disabled={episodes.length === 0} />
               <Button

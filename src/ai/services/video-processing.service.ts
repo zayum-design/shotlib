@@ -28,6 +28,9 @@ import { settingsRepo } from '@/storage/settingsRepo';
 import type { UnifiedModelRequest, TaskQueryResponse } from '@/ai/core/types';
 import { ModelException } from '@/ai/core/exceptions';
 import { promptLoader } from '@/ai/prompts/prompt-loader';
+import { fetchRemoteBlob } from '@/ai/core/media';
+import { uploadBlobToOss } from '@/ai/services/oss-upload.service';
+import { useLogStore } from '@/shared/stores/logStore';
 
 export type VideoGenerationMode =
   | 'text_to_video'
@@ -389,12 +392,61 @@ export async function processWithReferences(
 }
 
 /**
+ * 视频产物 OSS 转存缓存:原 URL → OSS URL。
+ * 轮询期间对同一完成结果会重复查询,缓存避免重复下载/上传;失败时移除缓存允许重试。
+ */
+const videoOssCache = new Map<string, Promise<string>>();
+
+/**
+ * 单个视频产物转存 OSS(ComfyUI /view、厂商 CDN 等地址 → 持久公共地址)。
+ * 未配置 OSS 返回原 URL;下载/上传失败打日志并降级原 URL(不阻断任务完成)。
+ */
+async function persistVideoToOss(url: string, projectId?: string): Promise<string> {
+  if (!/^https?:\/\//.test(url)) return url;
+  const { oss } = await settingsRepo.get();
+  if (!oss?.bucket || !oss.accessKeyId || !oss.accessKeySecret) return url;
+
+  const existing = videoOssCache.get(url);
+  if (existing) return existing.catch(() => url);
+
+  const task = (async () => {
+    const blob = await fetchRemoteBlob(url);
+    const ossUrl = await uploadBlobToOss(
+      blob,
+      oss,
+      `shotlib/${projectId || 'video'}/video`,
+      crypto.randomUUID(),
+    );
+    useLogStore.getState().addLog({
+      level: 'success',
+      source: 'oss',
+      url: ossUrl,
+      message: `视频产物已转存 OSS: ${ossUrl.slice(0, 120)}`,
+    });
+    return ossUrl;
+  })();
+  videoOssCache.set(url, task);
+  task.catch((e) => {
+    videoOssCache.delete(url);
+    useLogStore.getState().addLog({
+      level: 'error',
+      source: 'oss',
+      error: e instanceof Error ? e.message : String(e),
+      message: `视频产物转存 OSS 失败,保留原始地址: ${(e as Error).message.slice(0, 150)}`,
+    });
+  });
+  return task.catch(() => url);
+}
+
+/**
  * 单次查询视频任务状态(轮询由前端驱动;对齐后端 queryTaskStatus 返回形状,
- * 去 OSS 转存,失败原因统一为笼统提示,不暴露厂商细节)
+ * 失败原因统一为笼统提示,不暴露厂商细节)。
+ * 配置 OSS 时,完成的视频产物(ComfyUI /view、厂商地址)自动转存为 OSS 持久地址。
  */
 export async function queryTaskStatus(
   taskId: string,
   modelId?: string,
+  projectId?: string,
 ): Promise<Record<string, any>> {
   const actualModelId = modelId || getDefaultModelId('video');
   const s = await settingsRepo.get();
@@ -415,7 +467,11 @@ export async function queryTaskStatus(
     actualModelId,
   )) as TaskQueryResponse;
 
-  const urls: string[] = (response.data.urls as string[] | undefined) || [];
+  let urls: string[] = (response.data.urls as string[] | undefined) || [];
+  // 产物 OSS 转存:urls 仅任务完成时返回,此处统一换成持久地址
+  if (urls.length > 0) {
+    urls = await Promise.all(urls.map((u) => persistVideoToOss(u, projectId)));
+  }
   const extra = (response.data.extra || {}) as Record<string, unknown>;
   const rawError = extra.error;
   return {

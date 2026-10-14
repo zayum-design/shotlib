@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { useState } from 'react';
-import { Button, Input, Modal, Radio } from 'antd';
+import { Button, Input, Modal, Radio, Select } from 'antd';
 import { ClipboardCheck } from 'lucide-react';
 import { useWorkflowStore } from '../stores/workflowStore';
 import { diffScriptLines, collapseUnchangedLines } from '../utils/scriptDiffUtils';
@@ -27,23 +27,45 @@ interface ScriptReviewButtonProps {
 
 /**
  * 「校验修改剧本」按钮（含完整弹窗流程）：
- * 校验审阅 → 报告展示 → 可按建议直接修改；修改剧本 → 差异对比 → 确认后应用。
+ * 校验审阅 → 报告展示 → 可按建议直接修改；观众审阅 → 选择目标受众 → 构建观众 agent
+ * 以观众视角审阅 → 报告展示；修改剧本 → 差异对比 → 确认后应用。
  * 从 ScriptReview 步骤提取为共享组件，供步骤2正文与步骤头部（第2集+ 重新生成故事旁）复用。
  */
+/** 观众审阅：预设目标受众群体（可自由输入自定义群体） */
+const AUDIENCE_PRESETS = [
+  '都市职场女性',
+  '下沉市场中老年（银发族）',
+  'Z 世代学生党',
+  '男频热血青年',
+  '甜宠少女心',
+  '宝妈群体',
+  '小镇青年',
+  '泛大众短剧受众',
+];
+
 export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled }) => {
   const {
     script,
     reviewScript,
     isReviewingScript,
     applyModifiedScript,
+    lastCharacterSuggestions,
+    completeMissingCharacters,
+    applyCharacterRenames,
   } = useWorkflowStore();
 
   // 校验/修改剧本 dialog 状态
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
-  const [reviewMode, setReviewMode] = useState<'review' | 'modify'>('review');
+  const [reviewMode, setReviewMode] = useState<'review' | 'modify' | 'audience-review'>('review');
   const [reviewRequirement, setReviewRequirement] = useState('');
+  // 观众审阅：目标受众群体
+  const [audiences, setAudiences] = useState<string[]>([]);
+  // 当前展示的报告是否为观众审阅（弹窗标题区分）
+  const [reportIsAudience, setReportIsAudience] = useState(false);
   // 校验审阅报告展示
   const [reviewReport, setReviewReport] = useState<string | null>(null);
+  // 角色清单修订建议应用中
+  const [isApplyingSuggestions, setIsApplyingSuggestions] = useState(false);
   // 修改差异对比：修改成功后暂存新旧剧本，确认后才应用
   const [pendingDiff, setPendingDiff] = useState<{ oldScript: string; newScript: string } | null>(null);
   const [isApplyingDiff, setIsApplyingDiff] = useState(false);
@@ -63,16 +85,22 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
       message.warning('请输入修改要求');
       return;
     }
+    if (reviewMode === 'audience-review' && !audiences.some((a) => a.trim())) {
+      message.warning('请选择或输入至少一个目标受众群体');
+      return;
+    }
     const mode = reviewMode;
     const oldScript = script;
+    setReportIsAudience(mode === 'audience-review');
     setReviewModalOpen(false);
     const result = await reviewScript(
       mode,
       mode === 'modify' ? reviewRequirement.trim() : undefined,
+      mode === 'audience-review' ? audiences : undefined,
     );
     if (!result) return;
-    // mode=review 时返回审阅报告，弹窗展示
-    if (mode === 'review') {
+    // mode=review / audience-review 时返回审阅报告，弹窗展示
+    if (mode === 'review' || mode === 'audience-review') {
       setReviewReport(result);
     } else {
       // mode=modify 时返回新剧本，先展示差异对比，确认后才应用
@@ -108,6 +136,30 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
     }
   };
 
+  // 一键补充审阅报告检测出的缺失角色
+  const handleCompleteMissingCharacters = async () => {
+    const missing = lastCharacterSuggestions?.missingCharacters;
+    if (!missing?.length) return;
+    setIsApplyingSuggestions(true);
+    try {
+      await completeMissingCharacters(missing);
+    } finally {
+      setIsApplyingSuggestions(false);
+    }
+  };
+
+  // 一键应用审阅报告检测出的角色改名建议（跨年龄段桶自动改名）
+  const handleApplyCharacterRenames = async () => {
+    const renames = lastCharacterSuggestions?.renames;
+    if (!renames?.length) return;
+    setIsApplyingSuggestions(true);
+    try {
+      await applyCharacterRenames(renames);
+    } finally {
+      setIsApplyingSuggestions(false);
+    }
+  };
+
   // 差异对比数据（修改成功后暂存的新旧剧本）
   const diffLines = pendingDiff
     ? diffScriptLines(pendingDiff.oldScript, pendingDiff.newScript)
@@ -135,7 +187,7 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
         open={reviewModalOpen}
         onOk={handleConfirmReview}
         onCancel={() => setReviewModalOpen(false)}
-        okText={reviewMode === 'modify' ? '开始修改' : '开始校验'}
+        okText={reviewMode === 'modify' ? '开始修改' : reviewMode === 'audience-review' ? '开始审阅' : '开始校验'}
         cancelText="取消"
         confirmLoading={isReviewingScript}
         destroyOnHidden
@@ -146,6 +198,7 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
             onChange={(e) => setReviewMode(e.target.value)}
             options={[
               { value: 'review', label: '校验审阅' },
+              { value: 'audience-review', label: '观众审阅' },
               { value: 'modify', label: '修改剧本' },
             ]}
             optionType="button"
@@ -155,6 +208,24 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
             <p className="text-sm text-text-muted">
               根据故事梗概对当前剧本进行合理性二次校验审阅，输出审阅报告（梗概一致性、剧情逻辑、人物一致性、节奏等）。
             </p>
+          ) : reviewMode === 'audience-review' ? (
+            <div className="space-y-2">
+              <p className="text-sm text-text-muted">
+                选择本剧本的目标受众群体，将构建对应的观众 agent 以观众视角审阅剧本（追看意愿、爽点、弃剧风险），并汇总修改意见。
+              </p>
+              <Select
+                mode="tags"
+                value={audiences}
+                onChange={setAudiences}
+                placeholder="选择或输入目标受众群体，如：都市职场女性"
+                options={AUDIENCE_PRESETS.map((a) => ({ value: a, label: a }))}
+                allowClear
+                tokenSeparators={[',', '，']}
+                maxTagCount="responsive"
+                className="w-full"
+                style={{ width: '100%' }}
+              />
+            </div>
           ) : (
             <div className="space-y-2">
               <p className="text-sm text-text-muted">
@@ -173,9 +244,9 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
         </div>
       </Modal>
 
-      {/* 校验审阅报告展示弹窗 */}
+      {/* 校验审阅/观众审阅报告展示弹窗 */}
       <Modal
-        title="剧本校验审阅报告"
+        title={reportIsAudience ? '观众审阅报告' : '剧本校验审阅报告'}
         open={reviewReport !== null}
         onCancel={() => setReviewReport(null)}
         footer={
@@ -195,8 +266,61 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
         }
         width={720}
       >
-        <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text-secondary py-2">
-          {reviewReport}
+        <div className="py-2 space-y-3">
+          {/* 角色清单修订建议（审阅检测出缺失角色/跨桶改名时展示） */}
+          {lastCharacterSuggestions && (
+            <div className="rounded-lg border border-border bg-bg-tertiary/50 p-3 space-y-2">
+              <div className="text-sm font-medium text-text-primary">角色清单修订建议</div>
+              {lastCharacterSuggestions.missingCharacters.length > 0 && (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-xs text-text-secondary space-y-0.5">
+                    <div>缺失角色（剧本出场但清单缺失）：</div>
+                    {lastCharacterSuggestions.missingCharacters.map((m) => (
+                      <div key={m.name} className="text-text-muted">
+                        · {m.name}
+                        {m.age ? `（${m.age}` : ''}
+                        {m.gender ? `${m.age ? '，' : '（'}${m.gender}` : ''}
+                        {m.age || m.gender ? '）' : ''}
+                        {m.description ? `：${m.description}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={isApplyingSuggestions}
+                    onClick={handleCompleteMissingCharacters}
+                  >
+                    补充缺失角色
+                  </Button>
+                </div>
+              )}
+              {lastCharacterSuggestions.renames.length > 0 && (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-xs text-text-secondary space-y-0.5">
+                    <div>角色改名建议（名称年龄段与剧本实际年龄跨桶不符）：</div>
+                    {lastCharacterSuggestions.renames.map((r) => (
+                      <div key={`${r.from}-${r.to}`} className="text-text-muted">
+                        · {r.from} → {r.to}
+                        {r.reason ? `（${r.reason}）` : ''}
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={isApplyingSuggestions}
+                    onClick={handleApplyCharacterRenames}
+                  >
+                    应用角色改名
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="max-h-[60vh] overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-text-secondary">
+            {reviewReport}
+          </div>
         </div>
       </Modal>
 

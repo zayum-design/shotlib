@@ -54,6 +54,8 @@ export interface EpisodeSliceActions {
   removeEpisode: (episodeId: string) => void;
   // 从已生成视频的片段衍生新片段（截尾帧→上传→建场景→插片段），成功返回新片段 id，失败返回 null
   deriveEpisodeFromVideo: (episodeId: string) => Promise<{ newEpisodeId: string } | null>;
+  /** 衍生片段生成前置：截上一片段视频尾帧写入当前片段 firstFrame（幂等），失败返回 false */
+  prepareDerivativeFirstFrame: (episodeId: string) => Promise<boolean>;
   generateEpisodeVideo: (episodeId: string) => Promise<void>;
   getEpisodeVideoPreviewData: (episodeId: string) => { endpoint: string; body: any } | null;
   pollVideoTaskStatus: (episodeId: string, taskId: string, taskQueueTaskId?: string) => Promise<void>;
@@ -95,16 +97,76 @@ export function createEpisodeSlice(set: SetFn, get: GetFn): EpisodeSliceActions 
         const taskId = addTask({ type: 'episode-generate', name: '生成片段', status: 'running', prompt: episodePrompt, modelVariant: textModel });
 
         try {
-          const response = await workflowApi.generateEpisodesApi(script, characters, scenes, textModel, undefined, true, episodeNumberAtStart, get().episodeMaxDuration || 15, props);
+          // ===== 深度思考分流：开关开启且模型为 reasoning 变体时走流式（loading 逐行展示思考） =====
+          const useDeepThinking =
+            get().episodeDeepThinking === true &&
+            (get().textModels || []).find((m) => m.id === textModel)?.reasoning === true;
 
-          if (!response.success) {
-            failTask(taskId, '提交失败');
-            message.error('提交生成任务失败');
-            return;
-          }
-
-          const jobData = response.data as any;
           let data;
+
+          if (useDeepThinking) {
+            loading.show({ title: '深度思考生成片段...', description: '思考过程将逐行显示...' });
+            // 深度思考增量 → loading 思考行管道：按换行切行逐行展示，流结束后 flush 残留
+            let thinkBuffer = '';
+            const thinking = {
+              push(delta: string) {
+                thinkBuffer += delta;
+                const parts = thinkBuffer.split('\n');
+                thinkBuffer = parts.pop() || '';
+                for (const p of parts) {
+                  const t = p.trim();
+                  if (t) loading.appendThinkingLine(t);
+                }
+              },
+              flush() {
+                if (thinkBuffer.trim()) {
+                  loading.appendThinkingLine(thinkBuffer.trim());
+                  thinkBuffer = '';
+                }
+              },
+            };
+            const streamResult: { episodes?: any[] } = {};
+            let streamError: string | null = null;
+
+            await workflowApi.generateEpisodesStreamApi(
+              script, characters, scenes, textModel,
+              episodeNumberAtStart, get().episodeMaxDuration || 15, props,
+              {
+                onEvent: (ev) => {
+                  if (ev.type === 'reasoning') {
+                    thinking.push(ev.delta);
+                  } else if (ev.type === 'done') {
+                    streamResult.episodes = ev.episodes;
+                  } else if (ev.type === 'error') {
+                    streamError = ev.message;
+                  }
+                },
+                onError: (e) => {
+                  streamError = e.message || '网络异常';
+                },
+              },
+            );
+            thinking.flush();
+
+            if (streamError) {
+              failTask(taskId, streamError);
+              throw new Error(`生成片段失败: ${streamError}`);
+            }
+            if (!Array.isArray(streamResult.episodes) || streamResult.episodes.length === 0) {
+              failTask(taskId, '流式返回未包含片段数据');
+              throw new Error('生成片段失败：未生成分段');
+            }
+            data = { episodes: streamResult.episodes };
+          } else {
+            const response = await workflowApi.generateEpisodesApi(script, characters, scenes, textModel, undefined, true, episodeNumberAtStart, get().episodeMaxDuration || 15, props);
+
+            if (!response.success) {
+              failTask(taskId, '提交失败');
+              message.error('提交生成任务失败');
+              return;
+            }
+
+            const jobData = response.data as any;
 
           if (jobData?.jobId) {
             const jobId = jobData.jobId;
@@ -128,6 +190,7 @@ export function createEpisodeSlice(set: SetFn, get: GetFn): EpisodeSliceActions 
             data = pollResult.data;
           } else {
             data = response.data;
+          }
           }
 
           const resultWrapper = data as any;

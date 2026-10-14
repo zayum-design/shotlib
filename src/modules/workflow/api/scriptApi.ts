@@ -167,20 +167,139 @@ export async function generateScriptApi(
   }
 }
 
+// ============ 流式解析剧本（深度思考） ============
+
+/** 解析剧本流事件：思考增量 / 正文增量 / 完成 / 失败 */
+export type ParseScriptStreamEvent =
+  | { type: 'reasoning'; delta: string }
+  | { type: 'content'; delta: string }
+  | { type: 'done'; data: ParseScriptResponse }
+  | { type: 'error'; message: string };
+
+/**
+ * 流式解析剧本（深度思考）：与非流式 parseScriptApi 同构（含续集年龄基线），
+ * 推理思考逐事件下发，结束时下发解析补全好的结构化数据。
+ */
+export async function parseScriptStreamApi(
+  body: {
+    script: string;
+    model: string;
+    previousCharacters?: Array<{ name: string; age?: string | number }>;
+  },
+  handlers: { onEvent: (ev: ParseScriptStreamEvent) => void; onError?: (err: Error) => void },
+): Promise<void> {
+  try {
+    const result = await aiModelService.parseScriptStream(
+      body.model,
+      {
+        script: body.script,
+        previousCharacters: body.previousCharacters,
+      },
+      {
+        onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+        onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+      },
+    );
+    handlers.onEvent({ type: 'done', data: result as unknown as ParseScriptResponse });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    console.error('[scriptApi] 流式解析剧本失败:', error);
+    handlers.onEvent({ type: 'error', message: messageText });
+    handlers.onError?.(error instanceof Error ? error : new Error(messageText));
+  }
+}
+
+// ============ 流式生成剧本（深度思考） ============
+
+/** 生成剧本流事件：思考增量 / 正文增量 / 完成 / 失败 */
+export type ScriptStreamEvent =
+  | { type: 'reasoning'; delta: string }
+  | { type: 'content'; delta: string }
+  | { type: 'done'; script: string; summary: string }
+  | { type: 'error'; message: string };
+
+/**
+ * 流式生成剧本（深度思考）：
+ * 推理模型的思考过程逐事件下发（调用方接 loading 思考行管道），
+ * 结束时下发拆分好的 {script, summary}，与非流式结果同构。
+ */
+export async function generateScriptStreamApi(
+  body: {
+    topic: string;
+    model: string;
+    agentType?: string;
+    skills?: string[];
+    subStyle?: string;
+    artStyle?: string;
+    isEnding?: boolean;
+    genre?: string;
+    creationMode?: string;
+  },
+  handlers: {
+    onEvent: (ev: ScriptStreamEvent) => void;
+    onError?: (err: Error) => void;
+  },
+): Promise<void> {
+  // 子风格 hint 解析与 generateScriptApi 一致
+  let subStyleHint = '';
+  if (body.subStyle && body.agentType) {
+    const currentAgentType = agentTypes.find((t) => t.id === body.agentType);
+    const currentSubStyle = currentAgentType?.subStyles?.find((s) => s.id === body.subStyle);
+    if (currentSubStyle) subStyleHint = currentSubStyle.promptHint;
+  }
+  const genreItem = body.genre ? genres.find((g) => g.id === body.genre) : undefined;
+
+  try {
+    const { script, summary } = await aiModelService.generateScriptStream(
+      body.model,
+      {
+        topic: body.topic,
+        agentType: body.agentType,
+        subStyleHint: subStyleHint || undefined,
+        skills: body.skills,
+        isEnding: body.isEnding,
+        genreGuide: genreItem?.promptGuide || undefined,
+        genreHooks: resolveGenreHooks(genreItem, body.creationMode),
+        creationMode: body.creationMode,
+      },
+      {
+        onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+        onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+      },
+    );
+    handlers.onEvent({ type: 'done', script, summary });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    handlers.onEvent({ type: 'error', message: messageText });
+    handlers.onError?.(error instanceof Error ? error : new Error(messageText));
+  }
+}
+
 // ============ 剧本校验/修改 ============
 
-export type ScriptReviewMode = 'review' | 'modify';
+export type ScriptReviewMode = 'review' | 'modify' | 'audience-review';
 
 export interface ReviewScriptResponse {
   mode: ScriptReviewMode;
-  /** mode=review 时返回审阅报告 */
+  /** mode=review / audience-review 时返回审阅报告 */
   report?: string;
   /** mode=modify 时返回修改后的完整剧本 */
   script?: string;
+  /** mode=review 时返回角色清单修订建议（缺失角色/跨桶改名），无建议时缺省 */
+  characterSuggestions?: import('@/ai/services/ai-model.dto').CharacterRevisionSuggestions;
+}
+
+/** 校验审阅引用的角色清单条目 */
+export interface ReviewCharacterRef {
+  name: string;
+  age?: string | number;
+  gender?: string;
+  description?: string;
 }
 
 /**
- * mode=review:根据故事梗概对剧本进行合理性二次校验审阅
+ * mode=review:根据故事梗概对剧本进行合理性二次校验审阅(传入 characters 时启用角色清单覆盖检测)
+ * mode=audience-review:按目标受众构建观众 agent 以观众视角审阅(audiences 必填)
  * mode=modify:按修改要求对当前剧本进行修改
  */
 export async function reviewScriptApi(
@@ -191,6 +310,8 @@ export async function reviewScriptApi(
   model: string = 'deepseek',
   _async?: boolean,
   creationMode?: string,
+  characters?: ReviewCharacterRef[],
+  audiences?: string[],
 ): Promise<ApiResponse<ReviewScriptResponse>> {
   try {
     if (mode === 'modify') {
@@ -201,16 +322,66 @@ export async function reviewScriptApi(
       });
       return { success: true, data: { mode, script: modified } };
     }
-    const report = await aiModelService.reviewScript(model, {
-      script,
-      summary: summary || undefined,
-      creationMode,
-    });
-    return { success: true, data: { mode, report } };
+    if (mode === 'audience-review') {
+      const report = await aiModelService.audienceReviewScript(model, {
+        script,
+        summary: summary || undefined,
+        audiences,
+      });
+      return { success: true, data: { mode, report } };
+    }
+    const { report, characterSuggestions } = await aiModelService.reviewScript(
+      model,
+      {
+        script,
+        summary: summary || undefined,
+        creationMode,
+        characters,
+      },
+    );
+    return {
+      success: true,
+      data: { mode, report, characterSuggestions },
+    };
   } catch (error) {
     return {
       success: false,
       data: { mode },
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+// ============ 补充缺失角色 API ============
+
+/** 待补充的缺失角色条目（来自校验审阅报告） */
+export interface MissingCharacterInput {
+  name: string;
+  age?: string;
+  gender?: string;
+  stage?: string;
+  description?: string;
+  firstAppearance?: string;
+}
+
+/**
+ * 按缺失清单基于剧本补全角色设定（name/gender/age/description/avatarPrompt/imagePrompt）
+ */
+export async function completeCharactersApi(
+  script: string,
+  missing: MissingCharacterInput[],
+  model: string = 'deepseek',
+): Promise<ApiResponse<{ characters: any[] }>> {
+  try {
+    const result = await aiModelService.completeMissingCharacters(model, {
+      script,
+      missing,
+    });
+    return { success: true, data: result };
+  } catch (error) {
+    return {
+      success: false,
+      data: { characters: [] },
       message: error instanceof Error ? error.message : String(error),
     };
   }
@@ -420,15 +591,20 @@ type RelationshipNetwork = Record<string, unknown>;
 
 /**
  * 从剧本解析角色、场景、道具和故事背景
+ * @param previousCharacters 前面分集已确立的角色清单（name+age），续集解析时注入年龄基线
  */
 export async function parseScriptApi(
   script: string,
   model: string = 'deepseek',
   _preview?: boolean,
   _async?: boolean,
+  previousCharacters?: Array<{ name: string; age?: string | number }>,
 ): Promise<ApiResponse<ParseScriptResponse>> {
   try {
-    const result = await aiModelService.parseScript(model, { script });
+    const result = await aiModelService.parseScript(model, {
+      script,
+      previousCharacters,
+    });
     return { success: true, data: result };
   } catch (error) {
     return {
