@@ -156,3 +156,6 @@ docs/*.json
 
 # Python 编译缓存
 __pycache__/
+
+# ComfyUI 自定义节点包(本地开发产物,含编译缓存,不入库)
+comfyui-nodes/
