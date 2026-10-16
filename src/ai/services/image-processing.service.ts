@@ -17,12 +17,12 @@
  *
  * 对齐后端 shared/processing/image/image-processing.service.ts:
  * 业务语义请求 → UnifiedModelRequest → modelSDK → 厂商 adapter → 图片。
- * 差异:服务端生成后转存 OSS;开源版把图片 blob 化存入本地 imageRepo,
+ * 差异:服务端生成后转存 OSS;把图片 blob 化存入本地 imageRepo,
  * 返回本地 objectURL;远程图拉取失败(CORS)时降级直接返回原始 URL。
  */
 import { modelSDK } from './model-sdk';
 import { imageRepo } from '@/storage/imageRepo';
-import { fetchRemoteBlob, blobToDataUrl, compressDataUrl } from '@/ai/core/media';
+import { fetchRemoteBlob } from '@/ai/core/media';
 import { uploadImageAssetToOss } from './oss-upload.service';
 import { settingsRepo } from '@/storage/settingsRepo';
 import { useLogStore } from '@/shared/stores/logStore';
@@ -30,33 +30,13 @@ import type { UnifiedModelRequest } from '@/ai/core/types';
 
 /**
  * 规范化发往厂商的参考图:
- * - data:/http(s):原样(厂商可直接使用)
- * - blob:(本地 objectURL,刷新后 hydrate 会把 state 里的 URL 还原成这种):
- *   1. 反查 assetId → 已上传 OSS 的持久 URL(请求体小,厂商直接拉取)
- *   2. 反查不到则读本地 Blob 转 base64 data URL(超 4MB 自动压缩)
+ * - data:/http(s):原样(厂商可直接使用;本地图经 resolve 已统一为 OSS/data URL,
+ *   blob objectURL 机制已取消,不再出现 blob: 引用)
  * 不规范化时火山等厂商会报 "invalid url specified"。
  */
-async function normalizeReferenceImage(projectId: string | undefined, url: string): Promise<string> {
+async function normalizeReferenceImage(_projectId: string | undefined, url: string): Promise<string> {
   if (!url || url.startsWith('data:') || /^https?:\/\//.test(url)) return url;
-  if (!url.startsWith('blob:')) return url;
-
-  if (projectId) {
-    const assetId = imageRepo.findAssetIdByObjectUrl(url);
-    if (assetId) {
-      const record = await imageRepo.get(projectId, assetId);
-      const ossUrl = record?.data?.ossUrl;
-      if (typeof ossUrl === 'string' && /^https?:\/\//.test(ossUrl)) return ossUrl;
-    }
-  }
-
-  // 兜底:本地 Blob → data URL(压缩控制请求体)
-  try {
-    const resp = await fetch(url);
-    const blob = await resp.blob();
-    return await compressDataUrl(await blobToDataUrl(blob));
-  } catch {
-    return url;
-  }
+  return url;
 }
 
 /** 业务语义图片请求(与前端 buildXxxRequestBody 产出的 data 形状一致) */
@@ -154,7 +134,7 @@ function mapOperation(type: string): 'generate' | 'edit' | 'variation' | 'upscal
 export async function processImageRequest(request: ImageProcessingRequest): Promise<ImageProcessingResponse> {
   const { modelId, type, data, parameters } = request;
 
-  // 参考图规范化(blob: 本地引用 → OSS URL / data URL),避免厂商 "invalid url"
+  // 参考图规范化(本地图统一为 OSS URL / data URL),避免厂商 "invalid url"
   const rawRefs = data.referenceImages || (data.referenceImage ? [data.referenceImage] : undefined);
   const normalizedRefs = rawRefs
     ? await Promise.all(rawRefs.map((u) => normalizeReferenceImage(request.projectId, u)))
@@ -225,7 +205,7 @@ export async function processImageRequest(request: ImageProcessingRequest): Prom
       // OSS 持久化:配置了 OSS 时立即上传,业务数据引用持久公网 URL——
       // 厂商产物 URL 有过期时限(TOS 24h 等),后续视频生成以图片 URL 作参考图会失效。
       // 注意顺序:先上传并写入 data.ossUrl,之后 ensureUrl 才会解析出 OSS 地址
-      // (若先 ensureUrl 会生成 blob: objectURL 并缓存,后续解析永远命中 blob)
+      // (若先 ensureUrl 会按当时可用性解析并缓存,后续解析永远命中旧值)
       let persistUrl = url;
       if (ossEnabled) {
         try {

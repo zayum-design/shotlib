@@ -158,6 +158,15 @@
 
 > 景别/运镜/角度/灯光/氛围的完整枚举与单镜撰写公式见顶部注入的【镜头语言合同】，以下为短剧特有的补充规则。
 
+### 运镜多样性（硬性要求，违反必须重写后再输出）
+
+禁止整片 static / push_in 单调堆砌。每个 shot 的 `cameraMovements` 必须按【镜头语言合同】的「运镜剧情自动分配表」对照剧情语义选择，命中哪个触发场景就用哪个运镜，不得偷懒全用固定和推镜：
+
+1. **配额限制**：同一 episode 内 static 与 push_in 合计不得超过该 episode shot 总数的一半（如 4 个 shot 最多 2 个 static/push_in）；连续两个 shot 不得使用同一运镜。
+2. **时间轴定位选镜（先于语义微调）**：先按镜头语言合同的「运镜时间轴编排表」确定每个 shot 所属时间段（建立/引入/发展/高潮/落点）的候选运镜，再按剧情语义微调——建立段优先 pull_out/pan/god_view/crane_down，引入段优先 track/over_shoulder/dolly，发展段优先 push_in/rack_focus/tilt_down，高潮段才允许 bay_orbit/handheld/through_legs，落点段用 static/pull_out/crane_up 安静落地。4 镜编排示范：`crane_down → over_shoulder → rack_focus → static`；反例（禁止）：`static → push_in → static → push_in`。
+3. **语义匹配**：对话/对峙→over_shoulder / over_waist / static；强势登场/权力压迫→through_legs / low_angle 固定；揭示反转→reverse_swoop / rack_focus；信息揭示→rack_focus；开场俯瞰/命运布局→god_view / crane_up；动作/情绪高潮→bay_orbit（≤1 次/集、全剧 ≤2 次）/ handheld / track；情绪升级→push_in；段落收束→pull_out；空间建立→pan / tilt；行走/追逐→track / dolly。逐条「何时用/何时不用/写法」见镜头语言合同「运镜逐条使用详解」，特殊运镜限频以合同为准（reverse_swoop ≤2、bay_orbit ≤1、god_view ≤2、through_legs ≤2、over_waist ≤2、over_shoulder ≤3、rack_focus ≤3，均次/集）。
+4. **输出前逐 episode 自检**：逐个 shot 核对 cameraMovements 是否先命中时间轴编排表、再命中分配表触发场景、是否违反配额与连拍限制；凡违反者必须换成合规运镜并重写对应 prompt 文字后再输出，禁止原样提交。
+
 ### 符号规范（声画标记，Seedance 视频模型约定）
 
 - 台词：用 `{对白}` 嵌入（规则见第四节，不变）。
@@ -327,7 +336,7 @@
           "duration": 5, "cameraMovements": ["static"], "shotType": "medium", "cameraAngle": "eye_level", "lighting": "practical", "mood": "cool", "prompt": "镜头1：中景固定，【场景:林家客厅（深夜暖灯）】，【角色:林晚】（29岁，【形象照:林晚-居家毛衣照】）把门反锁，背抵门板，胸口起伏，门外传来拍门声<咚咚咚>。暖黄落地灯在墙面投下她发抖的影子，保持面部特征稳定一致", "referencePrompt": "【场景:林家客厅（深夜暖灯）】，【角色:林晚】（29岁，【形象照:林晚-居家毛衣照】）背抵门板站立，暖黄落地灯侧光，中景构图"
         },
         {
-          "duration": 5, "cameraMovements": ["push_in"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "practical", "mood": "cool", "prompt": "镜头2：近景缓慢推近，林晚背抵门板，抿着嘴不出声，眼泪在眼眶里没掉下来，门外【角色:周正】（32岁）的声音隔着门板闷闷地传进来{你听我解释}，她抬手把玄关柜上的结婚照扣下，相框玻璃磕在柜面上<咔>的一声，结束于她垂在身侧的手攥紧毛衣下摆，保持面部特征稳定一致", "referencePrompt": "【场景:林家客厅（深夜暖灯）】，林晚背抵门板站立，手边玄关柜上结婚照倒扣，暖黄落地灯侧光，近景构图"
+          "duration": 5, "cameraMovements": ["rack_focus"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "practical", "mood": "cool", "prompt": "镜头2：近景虚实焦切换，焦点由轻轻震动的门板缓缓落在林晚脸上，林晚背抵门板，抿着嘴不出声，眼泪在眼眶里没掉下来，门外【角色:周正】（32岁）的声音隔着门板闷闷地传进来{你听我解释}，她抬手把玄关柜上的结婚照扣下，相框玻璃磕在柜面上<咔>的一声，结束于她垂在身侧的手攥紧毛衣下摆，保持面部特征稳定一致", "referencePrompt": "【场景:林家客厅（深夜暖灯）】，林晚背抵门板站立，手边玄关柜上结婚照倒扣，暖黄落地灯侧光，近景构图"
         }
       ], "firstFramePrompt": "【场景:林家客厅（深夜暖灯）】，【角色:林晚】（29岁，【形象照:林晚-居家毛衣照】）背抵门板站立，双手垂在身侧，暖黄落地灯侧光，玄关柜上立着结婚照，中景构图", "lastFramePrompt": "【场景:林家客厅（深夜暖灯）】，林晚背抵门板滑坐到地板上，双手抱膝，结婚照倒扣在玄关柜上，暖黄落地灯把她的影子拉长在墙面，中景构图", "firstLastFrameVideoPrompt": "穿米色粗针毛衣的年轻女人背抵门板站着，门外拍门声<咚咚咚>，她抿嘴不出声，眼泪在眼眶里打转；镜头缓慢推近，她抬手把玄关柜上的结婚照扣下，相框磕出<咔>的一声；她顺着门板缓缓滑坐到地板上，双手抱膝，门外传来闷闷的男声{你听我解释}，她偏过头把脸埋进膝盖，保持面部特征稳定一致", "firstFrameDialogue": "", "lastFrameDialogue": "周正：你听我解释"
     },
@@ -368,7 +377,7 @@
     {
       "title": "片段4：楼下对峙", "description": "第二幕开头：苏晚晴刚走到楼下，前男友陈屿从阴影里走出来拦住她。她后退半步，把手机攥得更紧。结尾定格：两人隔着半米对视，陈屿的手悬在半空，苏晚晴的眼眶发红但没哭。", "shots": [
         { "duration": 5, "cameraMovements": ["static"], "shotType": "medium", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "中景固定，【场景:公寓楼下（夜间路灯逆光）】，苏晚晴刚踏出单元门，陈屿从右侧阴影里走出来拦住她去路，她后退半步，右手把手机攥到胸口，路灯从陈屿背后打过来，在他肩头勾出一圈轮廓光，保持两人位置关系固定，左右不互换", "referencePrompt": "【场景:公寓楼下（夜间路灯逆光）】，苏晚晴站在单元门外，陈屿从右侧阴影走出，路灯逆光，中景构图" },
-        { "duration": 5, "cameraMovements": ["push_in"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "近景缓慢推近，苏晚晴眼眶发红但眼泪没掉下来，下颌微抬直视陈屿，左手把手机攥得指节发白，陈屿的手悬在她面前半空，没碰到她，路灯在两人之间的地面上切出一道明暗分界线，保持面部特征稳定一致", "referencePrompt": "【场景:公寓楼下（夜间路灯逆光）】，苏近景面部特写，眼眶发红，下颌微抬，路灯在身后，近景构图" }
+        { "duration": 5, "cameraMovements": ["rack_focus"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "近景虚实焦切换，焦点由虚化的前景缓缓落在苏晚晴脸上，苏晚晴眼眶发红但眼泪没掉下来，下颌微抬直视陈屿，左手把手机攥得指节发白，陈屿的手悬在她面前半空，没碰到她，路灯在两人之间的地面上切出一道明暗分界线，保持面部特征稳定一致", "referencePrompt": "【场景:公寓楼下（夜间路灯逆光）】，苏近景面部特写，眼眶发红，下颌微抬，路灯在身后，近景构图" }
       ], "firstFramePrompt": "【场景:公寓楼下（夜间路灯逆光）】，苏晚晴刚踏出单元门，陈屿从右侧阴影走出，路灯逆光，中景构图", "lastFramePrompt": "【场景:公寓楼下（夜间路灯逆光）】，苏晚晴与陈屿隔着半米对视，陈屿的手悬在半空，苏晚晴眼眶发红但眼泪没掉，路灯在地面切出明暗分界线，近景构图", "firstLastFrameVideoPrompt": "短发女生刚踏出单元门，一个男人从右侧阴影走出拦住她，她后退半步把手机攥到胸口；镜头推近女生面部，她眼眶发红但眼泪没掉，下颌微抬，男人的手悬在她面前半空，路灯在地面切出明暗分界线，保持面部特征稳定一致", "firstFrameDialogue": "", "lastFrameDialogue": "" }
   ]
 }
@@ -393,7 +402,7 @@
           "duration": 5, "cameraMovements": ["static"], "shotType": "medium", "cameraAngle": "eye_level", "lighting": "natural", "mood": "bright", "prompt": "镜头1：中景固定，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，2024年上海深夜霓虹映在落地窗上，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）快步走到沙发前停下，右手攥紧手机抵在腰侧，压低声音说{你到底想怎样}（音量压得很低，一字一顿，每个字都像从牙缝里挤出来，真正想要的是让他先露怯），眉头紧锁、眼尾压着火，冷白霓虹光从落地窗映在脸上，高清，细节丰富", "dialogue": "你到底想怎样", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）站在沙发前，右手攥紧手机抵在腰侧，眉头紧锁，冷白霓虹光从落地窗映在脸上，中景构图"
         },
         {
-          "duration": 5, "cameraMovements": ["push_in"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "镜头2：中景缓慢推近，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}（音量比刚才更低，语速更慢，每个字之间的停顿都在施压，真正想要的是让他怕），尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "dialogue": "我要让你付出代价", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，手指在手机边缘，冷白霓虹光勾勒侧脸轮廓，面部特写构图"
+          "duration": 5, "cameraMovements": ["rack_focus"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "镜头2：中景虚实焦切换，焦点由前景虚化的手机缓缓落在苏晚晴脸上，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}（音量比刚才更低，语速更慢，每个字之间的停顿都在施压，真正想要的是让他怕），尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "dialogue": "我要让你付出代价", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，手指在手机边缘，冷白霓虹光勾勒侧脸轮廓，面部特写构图"
         }
       ], "firstFramePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）站在沙发前，右手握手机贴于耳侧，冷白霓虹光从落地窗映在脸上，中景构图", "lastFramePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，冷白霓虹光勾勒侧脸轮廓，面部特写构图", "firstLastFrameVideoPrompt": "镜头1：中景固定，穿浅灰色丝绸睡衣的短发女生快步走到沙发前停下，右手攥紧手机抵在腰侧，压低声音说{你到底想怎样}，眉头紧锁、眼尾压着火，冷白霓虹光从落地窗映在脸上；镜头2：镜头缓慢推近女生面部，下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}，尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "firstFrameDialogue": "苏晚晴：你到底想怎样", "lastFrameDialogue": "苏晚晴：我要让你付出代价"
     }
@@ -406,7 +415,7 @@
 - `cameraAngle`：eye_level / low_angle / high_angle / bird_eye
 - `lighting`：natural / soft / hard / rembrandt / cinematic
 - `mood`：bright / dark / warm / cool / moody / ethereal
-- `cameraMovements`：static / push_in / pull_out / pan_left / pan_right / track
+- `cameraMovements`：static / push_in / pull_out / pan_left / pan_right / tilt_up / tilt_down / track / dolly / crane_up / crane_down / rotate / zoom / handheld / through_legs / over_waist / over_shoulder / reverse_swoop / god_view / bay_orbit / rack_focus（**只放 1 种**；必须从镜头语言合同「运镜剧情自动分配表」按剧情语义选择，禁止只用 static/push_in，配额与自检见「五、镜头语言与画面公式 → 运镜多样性」）
 - `prompt`：画面描述，对白用 `{}` 嵌入；`referencePrompt`：单张静态参考图，禁止对白。
 - `firstFrameDialogue` / `lastFrameDialogue`：该 episode 首/末句有声对白（格式「角色名：对白」），无对白填 `""`。
 - `continuesFromPrevious`：布尔值。除第 1 个 episode 外每个 episode 必出：与上一 episode 同场景且时间紧接延续为 `true`（换场/时间跳跃为 `false`），第 1 个 episode 恒 `false`。判定规则见「三、片段间连贯性」第 10 条。
@@ -425,7 +434,7 @@
           "duration": 5, "cameraMovements": ["static"], "shotType": "medium", "cameraAngle": "eye_level", "lighting": "natural", "mood": "bright", "prompt": "镜头1：中景固定，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，2024年上海深夜霓虹映在落地窗上，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）快步走到沙发前停下，右手攥紧手机抵在腰侧，压低声音说{你到底想怎样}（音量压得很低，一字一顿，每个字都像从牙缝里挤出来，真正想要的是让他先露怯），眉头紧锁、眼尾压着火，冷白霓虹光从落地窗映在脸上，高清，细节丰富", "dialogue": "你到底想怎样", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）站在沙发前，右手攥紧手机抵在腰侧，眉头紧锁，冷白霓虹光从落地窗映在脸上，中景构图"
         },
         {
-          "duration": 5, "cameraMovements": ["push_in"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "镜头2：中景缓慢推近，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}（音量比刚才更低，语速更慢，每个字之间的停顿都在施压，真正想要的是让他怕），尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "dialogue": "我要让你付出代价", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，手指在手机边缘，冷白霓虹光勾勒侧脸轮廓，面部特写构图"
+          "duration": 5, "cameraMovements": ["rack_focus"], "shotType": "close_up", "cameraAngle": "eye_level", "lighting": "cinematic", "mood": "moody", "prompt": "镜头2：中景虚实焦切换，焦点由前景虚化的手机缓缓落在苏晚晴脸上，【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}（音量比刚才更低，语速更慢，每个字之间的停顿都在施压，真正想要的是让他怕），尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "dialogue": "我要让你付出代价", "referencePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，肩膀挺直，手指在手机边缘，冷白霓虹光勾勒侧脸轮廓，面部特写构图"
         }
       ], "firstFramePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，【角色:苏晚晴】（24岁，【形象照:夜间睡衣照】）站在沙发前，右手握手机贴于耳侧，冷白霓虹光从落地窗映在脸上，中景构图", "lastFramePrompt": "【场景:苏晚晴公寓客厅（高层落地窗夜景）】，苏晚晴下颌微抬，眼神直视前方，冷白霓虹光勾勒侧脸轮廓，面部特写构图", "firstLastFrameVideoPrompt": "镜头1：中景固定，穿浅灰色丝绸睡衣的短发女生快步走到沙发前停下，右手攥紧手机抵在腰侧，压低声音说{你到底想怎样}，眉头紧锁、眼尾压着火，冷白霓虹光从落地窗映在脸上；镜头2：镜头缓慢推近女生面部，下颌微抬，眼神直视前方，肩膀挺直，开口说{我要让你付出代价}，尾音一落手指在手机边缘敲了一下，冷白霓虹光勾勒侧脸轮廓，高清", "firstFrameDialogue": "苏晚晴：你到底想怎样", "lastFrameDialogue": "苏晚晴：我要让你付出代价"
     }
@@ -438,7 +447,7 @@
 - `cameraAngle`：eye_level / low_angle / high_angle / bird_eye
 - `lighting`：natural / soft / hard / rembrandt / cinematic
 - `mood`：bright / dark / warm / cool / moody / ethereal
-- `cameraMovements`：static / push_in / pull_out / pan_left / pan_right / track
+- `cameraMovements`：static / push_in / pull_out / pan_left / pan_right / tilt_up / tilt_down / track / dolly / crane_up / crane_down / rotate / zoom / handheld / through_legs / over_waist / over_shoulder / reverse_swoop / god_view / bay_orbit / rack_focus（**只放 1 种**；必须从镜头语言合同「运镜剧情自动分配表」按剧情语义选择，禁止只用 static/push_in，配额与自检见「五、镜头语言与画面公式 → 运镜多样性」）
 - `prompt`：画面描述，对白用 `{}` 嵌入；`referencePrompt`：单张静态参考图，禁止对白。
 - `firstFrameDialogue` / `lastFrameDialogue`：该 episode 首/末句有声对白（格式「角色名：对白」），无对白填 `""`。
 - `continuesFromPrevious`：布尔值。除第 1 个 episode 外每个 episode 必出：与上一 episode 同场景且时间紧接延续为 `true`（换场/时间跳跃为 `false`），第 1 个 episode 恒 `false`。判定规则见「三、片段间连贯性」第 10 条。
@@ -458,6 +467,7 @@
 3.4. **对白时长验算（逐 shot）**：对每个含对白的 shot，计算 `对白总字数 ÷ 2.5 + 1` 是否 ≤ 该 shot 的 `duration`；超过时必须延长该 shot（上限 10 秒）或拆句/拆 episode，严禁 20 字以上台词配 4-5 秒镜头。
 4. episode 是否按节拍完整覆盖主线（目标/阻力/反转/高潮/结尾都在 shots 中），无跳过。**逐对检查相邻片段连续性**：对每一对相邻 episode（1→2、2→3……），比对上一集的 lastFramePrompt 与下一集的 firstFramePrompt + 第一个 shot——场景/时间/人物位置姿势/道具/光线/情绪是否全部承接，非末集末镜是否为延续锚点，换场是否只在边界且带过渡描述；发现任何一对断裂必须重写后再输出。
 5. 首尾帧是否为静态定格（无动态词）；`firstLastFrameVideoPrompt` 的 `{}` 外是否无姓名/标记/代词。
+5.1. **运镜多样性自检（逐 episode 逐 shot）**：对照「运镜剧情自动分配表」核对每个 shot 的 cameraMovements 是否命中触发场景；统计每个 episode 中 static+push_in 数量是否超过该 episode shot 总数的一半、有无连续两个 shot 同运镜、特殊运镜（reverse_swoop/bay_orbit）是否超频（分别 ≤2 次/≤1 次每集）；任一违反必须换合规运镜并重写对应 prompt 文字后再输出。
 6. 形象照名是否取自清单，且在同一角色的**同一剧情状态期间**保持一致；**状态匹配检查**：角色受伤/包扎期间的 episode 是否误用了完好常态照、剧本明确痊愈/换装后是否已切回常态照（或按服装取舍伤情例外写了伤情叠加描述）——发现错位必须切换/修正后再输出；每个 `【形象照:名】` 是否取自其所在 `【角色:】` 本人清单、写在该角色的括号内（无跨角色引用）；prompt 是否无抽象情绪词、无字幕水印、单镜头单运镜、末尾附有对应易崩锚点的保持指令。**逐个 episode 抽查（而非只看片段1）**：每个 episode 中有可用形象照的角色，其在该 episode 第一个 prompt 字段出现时是否都带了 `【形象照:名】` 标记——发现任何 episode 漏标必须补上后再输出。
 7. **逐 shot 表情与肢体动作覆盖率**：逐个检查所有 episode 的所有 shot--凡有角色出镜的 shot，prompt 是否同时包含至少两处不同部位的具体微表情（部位+变化，且有起点到终点的变化方向）与一个推进剧情的肢体动作；有无「面无表情/神情平静/目光平静」式空白描述或装饰性动作充数。统计漏写的 shot 数，发现漏写必须补上后再输出。
 7.1. **逐 shot prompt 字数与详细度**：逐个统计所有 shot 的 `prompt` 纯文字字数（去掉 `【】` 标记与 `{}` 对白），是否每镜都 ≥ 80 字；低于 80 字的必须扩写，补充具体微表情、肢体动作、空间关系、光源、场景物件等细节。禁止出现「两人在客厅对话」「角色看着对方」这类空泛概括。

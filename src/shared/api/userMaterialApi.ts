@@ -13,10 +13,10 @@
 // limitations under the License.
 
 /**
- * 用户素材库 API(开源版本地存根版)
+ * 用户素材库 API(本地存根版)
  *
- * 原版把用户上传的素材(角色/场景参考图)存到自建服务端 + OSS;
- * 开源版无后端,全部函数改为本地存根:
+ * 后端把用户上传的素材(角色/场景参考图)存到自建服务端 + OSS;
+ * 无后端,全部函数改为本地存根:
  * - 写入类返回失败 + 明确提示(UI 走已有的失败分支)
  */
 
@@ -38,11 +38,11 @@ interface ApiResponse<T> {
 }
 
 /** 统一的「功能不可用」失败响应 */
-function unavailable<T>(data: T, message = '开源版不支持素材库云端存储,图片仅保存在当前项目中'): ApiResponse<T> {
+function unavailable<T>(data: T, message = '不支持素材库云端存储,图片仅保存在当前项目中'): ApiResponse<T> {
   return { success: false, data, message };
 }
 
-/** POST /api/creator/user-materials → 开源版不支持(素材不入云库) */
+/** POST /api/creator/user-materials → 不支持(素材不入云库) */
 export async function createLocalAsset(
   imageUrl: string,
   assetType: string = "image",

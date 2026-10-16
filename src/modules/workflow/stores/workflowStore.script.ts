@@ -525,6 +525,78 @@ reviewScript: async (mode: 'review' | 'modify' | 'audience-review', requirement?
     description: c.description,
   }));
   try {
+    // ===== 深度思考分流：剧本深度思考开关开启且模型为 reasoning 变体时走流式校验修改，
+    // loading 中逐行展示思考过程（与生成/解析剧本共用 scriptDeepThinking 开关） =====
+    const useDeepThinking = (get().scriptDeepThinking || false)
+      && (get().textModels || []).find((m) => m.id === textModel)?.reasoning === true;
+    let resultData: { mode: 'review' | 'modify'; report?: string; script?: string } | undefined;
+
+    if (useDeepThinking) {
+      loading.setDescription('深度思考中，思考过程将逐行显示...');
+      // 深度思考增量 → loading 思考行管道：按换行切行逐行展示，流结束后 flush 残留
+      let thinkBuffer = '';
+      const thinking = {
+        push(delta: string) {
+          thinkBuffer += delta;
+          const parts = thinkBuffer.split('\n');
+          thinkBuffer = parts.pop() || '';
+          for (const p of parts) {
+            const t = p.trim();
+            if (t) loading.appendThinkingLine(t);
+          }
+        },
+        flush() {
+          if (thinkBuffer.trim()) {
+            loading.appendThinkingLine(thinkBuffer.trim());
+            thinkBuffer = '';
+          }
+        },
+      };
+      const streamResult: { done?: any } = {};
+      let streamError: string | null = null;
+
+      await workflowApi.reviewScriptStreamApi(
+        {
+          script,
+          summary: summary || '',
+          mode,
+          requirement,
+          model: textModel,
+          creationMode: get().creationMode || undefined,
+          characters: mode === 'review' ? reviewCharacters : undefined,
+          audiences: mode === 'audience-review' ? audiences : undefined,
+        },
+        {
+          onEvent: (ev) => {
+            if (ev.type === 'reasoning') {
+              thinking.push(ev.delta);
+            } else if (ev.type === 'done') {
+              streamResult.done = ev.data;
+            } else if (ev.type === 'error') {
+              streamError = ev.message;
+            }
+          },
+          onError: (e) => {
+            streamError = e.message || '网络异常';
+          },
+        },
+      );
+      thinking.flush();
+
+      if (streamError) {
+        failTask(taskId, streamError);
+        message.error(`${taskLabel}失败: ${streamError}`);
+        return null;
+      }
+      if (!streamResult.done) {
+        failTask(taskId, '流式连接中断');
+        message.error(`${taskLabel}失败: 流式连接中断，请重试`);
+        return null;
+      }
+      resultData = streamResult.done;
+    }
+
+    if (!resultData) {
     // 使用异步模式，将任务放入队列
     const enqueueResponse = await workflowApi.reviewScriptApi(
       script, summary || '', mode, requirement, textModel, true, get().creationMode || undefined,
@@ -538,7 +610,6 @@ reviewScript: async (mode: 'review' | 'modify' | 'audience-review', requirement?
       return null;
     }
 
-    let resultData: { mode: 'review' | 'modify'; report?: string; script?: string } | undefined;
     const jobData = enqueueResponse.data as any;
     if (jobData?.jobId) {
       message.info(`${taskLabel}任务已提交，正在排队处理...`);
@@ -559,6 +630,7 @@ reviewScript: async (mode: 'review' | 'modify' | 'audience-review', requirement?
     } else {
       // 同步模式回退（Redis 未启用时）
       resultData = jobData;
+    }
     }
 
     if (!resultData) {
@@ -1679,6 +1751,11 @@ parseScript: async (options?: { replace?: boolean; deepThinking?: boolean }) => 
         });
         // 数据已重新生成，清除 SaveGuard 的重置标记（允许后续保存）
         saveGuard.clearResetMark();
+        // 关键修复：重新分解后角色/场景数相对导入/上一集快照必然下降（分集剧本只含本场角色），
+        // SaveGuard 的「数据量下降」规则会 BLOCKED 本次显式保存，导致解析结果不落库、刷新后丢失。
+        // 解析重建数据是合法替换，清除快照使本次保存按「首次保存」放行
+        // （与 applyV2ProjectData 导入保存前的处理一致）
+        saveGuard.clearSnapshot();
         // 立即保存到云端，避免依赖 1s 防抖窗口
         // force：此时 isParsingScript 仍为 true（finally 中才复位），显式保存需绕过进行中拦截
         saveToServer({

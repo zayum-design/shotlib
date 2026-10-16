@@ -963,7 +963,7 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
               }));
             };
 
-            // 开源版无服务端任务队列，无后端记录可反查，直接按不可恢复处理
+            // 无服务端任务队列，无后端记录可反查，直接按不可恢复处理
             markUnrecoverable();
           })();
         }
@@ -1030,7 +1030,7 @@ export function createEpisodeVideoSlice(set: SetFn, get: GetFn): EpisodeVideoSli
     },
 
     resumeBullVideoPolling: async (taskQueueTaskId: string, jobId: string, episodeId: string) => {
-      // 开源版无服务端 Bull 队列(浏览器直连厂商),原版的服务端任务恢复轮询不可达;
+      // 无服务端 Bull 队列(浏览器直连厂商),后端的服务端任务恢复轮询不可达;
       // 保险兜底:一旦被调用,把任务与片段标记为失败,提示重新生成。
       void jobId;
       useTaskQueueStore.getState().updateTask(taskQueueTaskId, {

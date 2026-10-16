@@ -37,7 +37,7 @@ for (const [file, content] of Object.entries(RAW_TEMPLATES)) {
   TEMPLATE_MAP.set(rel, content);
 }
 
-/** 后端风格相对路径 → 本仓库相对路径:开源版模板库省略顶级业务前缀 `drama/` */
+/** 后端风格相对路径 → 本仓库相对路径:模板库省略顶级业务前缀 `drama/` */
 function normalizeRelPath(relativePath: string): string {
   return relativePath.startsWith('drama/') ? relativePath.slice('drama/'.length) : relativePath;
 }

@@ -29,7 +29,8 @@ const { TextArea } = Input;
 
 /**
  * 剧本生成「深度思考」开关：开启且当前剧本模型为推理模型（reasoning）时，
- * 生成剧本走流式深度思考（loading 逐行展示铁律/梗概/背景/人物关系自检过程）。
+ * 生成剧本与校验修改剧本（审阅/观众审阅/修改）均走流式深度思考
+ * （loading 逐行展示铁律/梗概/背景/人物关系自检过程）。
  */
 export const ScriptDeepThinkingSwitch: React.FC = () => {
   const scriptDeepThinking = useWorkflowStore((s) => s.scriptDeepThinking);
@@ -45,7 +46,7 @@ export const ScriptDeepThinkingSwitch: React.FC = () => {
     <Tooltip
       title={
         modelSupports
-          ? '开启后生成剧本走深度思考流式：模型先按铁律/梗概/背景/人物关系逐项自检再输出终稿，思考过程逐行显示'
+          ? '开启后生成剧本、校验修改剧本均走深度思考流式：模型先逐项自检再输出终稿，思考过程逐行显示'
           : '当前剧本模型不支持深度思考，请切换为推理模型'
       }
       placement="top"

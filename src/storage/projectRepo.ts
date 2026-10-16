@@ -177,7 +177,7 @@ export const projectRepo = {
         segmentCount: Array.isArray(episodes)
           ? episodes.reduce((sum: number, ep) => sum + (ep.scene_count || 0), 0)
           : 0,
-        audioCount: 0, // 开源版无 TTS/音频资产
+        audioCount: 0, // 无 TTS/音频资产
       };
     }
     return { success: true, data: result };

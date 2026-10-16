@@ -188,7 +188,7 @@ export const episodeRepo = {
 
   /**
    * 兼容接口:老后端的"分集-场景关联"表(creator_drama_episode_scene)。
-   * 开源版场景数据完整保存在分集 data 内,无需独立关联,恒返回成功。
+   * 场景数据完整保存在分集 data 内,无需独立关联,恒返回成功。
    */
   async assignScenes(episodeId: string, _sceneIds: string[]): Promise<ApiResult<{ message: string }>> {
     void episodeId;

@@ -49,12 +49,6 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
     try {
       const cached = await idbStorage.getItem<ResolvedImage>(`${CACHE_KEY_PREFIX}${assetId}`);
       if (!cached?.url) return null;
-      // blob: objectURL 仅当前会话有效,历史缓存里的一定是死链 —— 视为未命中并清除,
-      // 让本次重新解析(配置了 OSS 时 ensureUrl 会补传为持久远程地址)
-      if (cached.url.startsWith('blob:')) {
-        await idbStorage.removeItem(`${CACHE_KEY_PREFIX}${assetId}`);
-        return null;
-      }
       return cached;
     } catch (e) {
       console.warn('[useAssetImageResolver] 读取缓存失败:', e);
@@ -63,8 +57,7 @@ export function useAssetImageResolver(options: UseAssetImageResolverOptions = {}
   }, []);
 
   const saveToCache = useCallback(async (assetId: string, data: ResolvedImage) => {
-    // 会话级 blob: 地址不落缓存,避免刷新后读到死链
-    if (!data.url || data.url.startsWith('blob:')) return;
+    if (!data.url) return;
     try {
       await idbStorage.setItem(`${CACHE_KEY_PREFIX}${assetId}`, data);
     } catch (e) {
@@ -172,8 +165,7 @@ export async function resolveAssetImages(
   const res = await localApi.resolveImageAssets(projectId, { asset_ids: assetIds });
   if (res.success && res.data) {
     for (const [id, data] of Object.entries(res.data)) {
-      // 会话级 blob: 地址不落缓存(同 useAssetImageResolver.saveToCache)
-      if (!data.url || data.url.startsWith('blob:')) continue;
+      if (!data.url) continue;
       try {
         await idbStorage.setItem(`${CACHE_KEY_PREFIX}${id}`, data);
       } catch (e) {

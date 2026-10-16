@@ -31,31 +31,38 @@ import { filterEpisodeProps } from '../../utils/workflowUtils';
 /**
  * 片段生成「深度思考」开关：开启且当前文本模型为推理模型（reasoning）时，
  * 剧本分解走流式深度思考（loading 逐行展示节拍覆盖/提示词一致性/资产引用/时长自检）。
+ *
+ * @param purpose 'generate'（默认）文案面向片段生成；'parse' 文案面向剧本分解（解析），
+ *                且禁用条件跟随解析进行中状态。两种用途共用 episodeDeepThinking 状态。
  */
-export const EpisodeDeepThinkingSwitch: React.FC = () => {
+export const EpisodeDeepThinkingSwitch: React.FC<{ purpose?: 'generate' | 'parse' }> = ({
+  purpose = 'generate',
+}) => {
   const episodeDeepThinking = useWorkflowStore((s) => s.episodeDeepThinking);
   const setEpisodeDeepThinking = useWorkflowStore((s) => s.setEpisodeDeepThinking);
   const textModel = useWorkflowStore((s) => s.textModel);
   const textModels = useWorkflowStore((s) => s.textModels);
   const isGeneratingEpisodes = useWorkflowStore((s) => s.isGeneratingEpisodes);
+  const isParsingScript = useWorkflowStore((s) => s.isParsingScript);
   const modelSupports =
     (textModels || []).find((m) => m.id === textModel)?.reasoning === true;
 
+  const tooltip =
+    !modelSupports
+      ? '当前文本模型不支持深度思考，请切换为推理模型'
+      : purpose === 'parse'
+        ? '开启后剧本分解走深度思考流式：模型先按角色提取/场景/道具/关系/年龄桶逐项自检再输出，思考过程逐行显示'
+        : '开启后生成片段走深度思考流式：模型先按节拍覆盖/提示词一致性/资产引用/时长逐项自检再输出，思考过程逐行显示';
+  const busy = purpose === 'parse' ? isParsingScript : isGeneratingEpisodes;
+
   return (
-    <Tooltip
-      title={
-        modelSupports
-          ? '开启后生成片段走深度思考流式：模型先按节拍覆盖/提示词一致性/资产引用/时长逐项自检再输出，思考过程逐行显示'
-          : '当前文本模型不支持深度思考，请切换为推理模型'
-      }
-      placement="top"
-    >
+    <Tooltip title={tooltip} placement="top">
       <span className="inline-flex items-center gap-1.5 text-xs text-text-muted select-none">
         深度思考
         <Switch
           size="small"
           checked={episodeDeepThinking && modelSupports}
-          disabled={!modelSupports || isGeneratingEpisodes}
+          disabled={!modelSupports || busy}
           onChange={(checked) => setEpisodeDeepThinking(checked)}
         />
       </span>

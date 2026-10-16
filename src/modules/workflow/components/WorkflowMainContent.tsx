@@ -76,7 +76,7 @@ interface WorkflowMainContentProps {
   isGeneratingEpisodes: boolean;
 
   // 操作
-  parseScript: (opts: { replace: boolean }) => void;
+  parseScript: (opts: { replace?: boolean; deepThinking?: boolean }) => void;
   generateEpisodes: () => void;
 
   // 简化模式
@@ -266,6 +266,27 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                 isActive={true}
                 extra={
                   <div className="flex items-center gap-3 max-md:flex-wrap max-md:gap-2">
+                    {/* 解析用文本模型选择：与「片段生成」步骤头部同一布局（模型+价格+深度思考） */}
+                    <div className="flex items-center gap-2 max-md:flex-wrap">
+                      <span className="text-xs text-text-muted">解析模型:</span>
+                      <Select
+                        value={textModel}
+                        onChange={setTextModel}
+                        options={textModels.map((m) => ({
+                          value: m.id,
+                          label: (
+                            <Tooltip title={m.description}>
+                              <span>{m.name}</span>
+                            </Tooltip>
+                          ),
+                          disabled: m.disabled,
+                        }))}
+
+                        size="small" popupMatchSelectWidth={false} />
+                      <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+                    </div>
+                    {/* 解析深度思考开关：开启且模型为推理模型时，剧本分解走流式深度思考 */}
+                    <EpisodeDeepThinkingSwitch purpose="parse" />
                     {/* 校验修改按钮：对分解后角色/场景的提示词进行校验和修改（已生成片段后锁定禁用） */}
                     <AssetPromptReviewButton disabled={episodesCount > 0 || !hasScriptSplitData} />
 
@@ -290,7 +311,8 @@ export const WorkflowMainContent: React.FC<WorkflowMainContentProps> = ({
                           cancelText: '取消',
                           okButtonProps: { danger: true },
                           onOk: () => {
-                            setTimeout(() => parseScript({ replace: true }), 0);
+                            // 与片段步骤一致：解析深度思考开关（episodeDeepThinking）显式传入
+                            setTimeout(() => parseScript({ replace: true, deepThinking: useWorkflowStore.getState().episodeDeepThinking }), 0);
                           },
                         });
                       }}

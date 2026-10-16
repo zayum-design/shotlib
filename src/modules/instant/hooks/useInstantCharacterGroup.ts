@@ -16,7 +16,7 @@
  * useInstantCharacterGroup.ts — 即时创作角色相关子 hook 聚合
  *
  * 聚合角色编辑、图片生成(头像/形象照/多视图)等能力。
- * (原版的 TTS 发音人预览/变更能力已随后端语音服务一起移除)
+ * (TTS 发音人预览/变更能力已随后端语音服务一起移除)
  */
 import { useInstantCharacterEditor } from './useInstantCharacterEditor';
 import { useInstantImageGeneration } from './useInstantImageGeneration';

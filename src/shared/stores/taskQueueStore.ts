@@ -206,7 +206,7 @@ export const useTaskQueueStore = create<TaskQueueState>((set, get) => ({
     };
     set((state) => ({ tasks: [...state.tasks, newTask] }));
 
-    // 开源版：任务仅保存在浏览器本地（localStorage），不再同步后端任务历史
+    // ��任务仅保存在浏览器本地（localStorage），不再同步后端任务历史
     return id;
   },
 
@@ -219,7 +219,7 @@ export const useTaskQueueStore = create<TaskQueueState>((set, get) => ({
   },
 
   completeTask: (id, result, durationMs) => {
-    void durationMs; // 开源版无后端任务历史,耗时不再上报
+    void durationMs; // 无后端任务历史,耗时不再上报
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id
@@ -230,7 +230,7 @@ export const useTaskQueueStore = create<TaskQueueState>((set, get) => ({
   },
 
   failTask: (id, error, durationMs) => {
-    void durationMs; // 开源版无后端任务历史,耗时不再上报
+    void durationMs; // 无后端任务历史,耗时不再上报
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id

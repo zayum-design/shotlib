@@ -22,7 +22,7 @@
  * 2. prepareDerivativeFirstFrame — 「衍生片段」开关的生成前置：截取上一片段视频尾帧，
  *    记录到当前片段的 firstFrameImageUrl/AssetId，供下游识别衍生关系。
  *
- * 开源版截帧（替代原服务端 ffmpeg）：fetchRemoteBlob 把视频拉为本地 blob（直连失败
+ * 截帧（替代原服务端 ffmpeg）：fetchRemoteBlob 把视频拉为本地 blob（直连失败
  * 自动经代理，规避跨域），blob URL 同源无 canvas 污染问题 → <video> seek 到结尾 →
  * canvas 截帧 → imageRepo 落库（配置 OSS 时同步直传拿持久地址）。
  */
@@ -43,7 +43,7 @@ function deriveLabelOf(index: number): string {
 }
 
 /**
- * 浏览器截取视频尾帧并落库（开源版替代后端 ffmpeg 截帧）：
+ * 浏览器截取视频尾帧并落库（替代后端 ffmpeg 截帧）：
  * 视频 → blob（代理兜底）→ blob URL 同源加载 → seek 尾帧 → canvas → PNG blob →
  * imageRepo 注册（配置 OSS 时直传换持久地址）。失败返回 null（含用户提示）。
  */

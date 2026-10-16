@@ -25,7 +25,7 @@ import { get, set, del, keys } from 'idb-keyval';
 
 let userIdResolver: (() => number | null | undefined) = () => undefined;
 
-/** 注册获取当前用户 ID 的 resolver(开源版:无账号体系,恒为本地单用户) */
+/** 注册获取当前用户 ID 的 resolver(无账号体系,恒为本地单用户) */
 export function setUserIdResolverForIDB(resolver: () => number | null | undefined): void {
   userIdResolver = resolver;
 }

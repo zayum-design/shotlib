@@ -273,11 +273,11 @@ export function WorkflowPage() {
 
 
 
-  // Preview 请求管理(开源版:原版通过服务端 /preview 端点预览 prompt 组装结果,已随后端移除)
+  // Preview 请求管理(服务端 /preview 端点预览 prompt 组装结果,已随后端移除)
   const fetchPreview = async (endpoint: string, body: Record<string, unknown>) => {
     void endpoint;
     void body;
-    throw new Error('开源版不支持服务端 API 预览(依赖自建后端),可在设置中关闭「API 预览」');
+    throw new Error('不支持服务端 API 预览(依赖自建后端),可在设置中关闭「API 预览」');
   };
 
   const { apiPreviewEnabled } = useApiPreviewStore();
@@ -582,7 +582,7 @@ export function WorkflowPage() {
   const currentProject = getCurrentProject();
 
   // 文件导入 hook（封装上传 JSON 数据的全部逻辑）
-  const { fileInputRef, handleFileChange, importStepModal } = useWorkflowImport({
+  const { fileInputRef, handleFileChange, importStepModal, importProgressModal } = useWorkflowImport({
     projectId: paramProjectId || currentProjectId || undefined,
     currentEpisode,
     setEpisodeList,
@@ -742,6 +742,7 @@ export function WorkflowPage() {
 
       {/* 导入数据步骤选择弹窗 */}
       {importStepModal}
+      {importProgressModal}
 
     </div>
   );

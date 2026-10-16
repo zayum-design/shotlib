@@ -4,12 +4,27 @@
   "description": "MiniMax 文本生成模型，支持多语言编程、Agent 工作流等复杂任务场景",
   "variants": [
     {
+      "id": "MiniMax-M3",
+      "name": "MiniMax M3",
+      "type": "text",
+      "baseUrl": "https://api.minimaxi.com/v1",
+      "apiDocUrl": "https://platform.minimaxi.com/docs/api-reference/text-chat-openai",
+      "description": "MiniMax M3 原生多模态 Agentic 模型，1M token 上下文，输出速度约 100+ TPS，支持工具调用与交错思维链（推理），max_completion_tokens 推荐 131072（上限 524288）",
+      "enabled": true,
+      "reasoning": true,
+      "price": 0.15,
+      "credit_price": 2,
+      "rpm": 100,
+      "priceType": "per_1k_tokens",
+      "maxOutputTokens": 131072
+    },
+    {
       "id": "MiniMax-M2.7",
       "name": "MiniMax M2.7",
       "type": "text",
       "baseUrl": "https://api.minimaxi.com/v1",
       "apiDocUrl": "https://platform.minimaxi.com/docs/llms.txt",
-      "description": "MiniMax M2.7 通用文本模型，支持多语言编程、工具调用和复杂任务，上下文窗口 204800，输出速度约 60 TPS",
+      "description": "MiniMax M2.7 通用文本模型，支持多语言编程、工具调用和复杂任务，上下文窗口 204800，输出速度约 60 TPS（官方已发布 M2.7 系列下线通知，建议迁移至 MiniMax-M3）",
       "enabled": true,
       "reasoning": true,
       "price": 0.15,
@@ -37,9 +52,9 @@
       "id": "MiniMax-H3",
       "name": "MiniMax H3",
       "type": "video",
-      "baseUrl": "https://api.minimax.cn",
-      "apiDocUrl": "https://platform.minimax.cn/docs/api-reference/video-generation-v2-h3-context-ir",
-      "description": "MiniMax H3 多模态视频生成模型，支持文生视频、首/尾帧图生视频、全能参考生成（图/视频/音频），输出 768P/2K，时长 4~15 秒",
+      "baseUrl": "https://api.minimaxi.com",
+      "apiDocUrl": "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
+      "description": "MiniMax H3 多模态视频生成模型，支持文生视频、首/尾帧图生视频、全能参考生成（图/视频/音频），输出 768P/2K，时长 4~15 秒；支持 768P 成片再生成 2K（regeneration）",
       "enabled": true,
       "async": true,
       "supports": {
@@ -95,6 +110,8 @@
           "768P",
           "2K"
         ],
+        "regeneration": true,
+        "regeneration_note": "已有 768P 成片可原样重提交 content + base_video 再生成 2K，task_type=regeneration",
         "ratio": true,
         "duration": true,
         "prompt_max_chars": 7000

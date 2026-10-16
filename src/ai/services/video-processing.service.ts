@@ -18,7 +18,7 @@
  * 对齐后端 shared/processing/video/video-processing.service.ts:
  * - 四种生成 mode(text/image/frames/references_to_video)组装 UnifiedModelRequest
  * - 统一追加反 AI 味指令与视频禁止项(VIDEO_NEGATIVES.md,前 20 字指纹防重复追加)
- * - 差异:开源版恒为「提交即返回 taskId,由上层轮询器查询」的 CLIENT_SIDE 语义,
+ * - 差异:恒为「提交即返回 taskId,由上层轮询器查询」的 CLIENT_SIDE 语义,
  *   替代后端 SERVER_SIDE 同步等待;queryTaskStatus 为单次查询(轮询由前端驱动)
  */
 import { findProviderByVariantId, getDefaultModelId, getVariantConfig } from '@/ai/core/model-registry';
@@ -208,7 +208,7 @@ function withAntiAiDirective(prompt: string): string {
   return result;
 }
 
-/** 提交视频任务并返回「待轮询」响应(开源版统一 CLIENT_SIDE 语义) */
+/** 提交视频任务并返回「待轮询」响应(统一 CLIENT_SIDE 语义) */
 async function submitForPolling(
   request: UnifiedModelRequest,
   type: string,
@@ -228,7 +228,7 @@ async function submitForPolling(
 
 /**
  * 统一生成入口:按 mode 组装 UnifiedModelRequest 后提交(对齐后端 generate 的四种 case)。
- * 开源版恒提交即返回 taskId,由调用方通过 queryTaskStatus 轮询。
+ * 恒提交即返回 taskId,由调用方通过 queryTaskStatus 轮询。
  */
 export async function generate(
   request: UnifiedVideoRequest,

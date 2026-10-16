@@ -16,7 +16,7 @@
  * index.ts — 本地仓储层聚合出口
  *
  * 聚合各仓储(repo)并以 localApi 门面暴露 drama 业务所需子集,
- * 方法名/参数/返回形状与原服务端版 projectSyncApi 保持一致。
+ * 方法名/参数/返回形状与原后端 projectSyncApi 保持一致。
  */
 import { projectRepo } from './projectRepo';
 import { episodeRepo } from './episodeRepo';
@@ -56,7 +56,7 @@ export type {
 export type { AppSettings, ProxyMode, OssConfig } from './settingsRepo';
 
 /**
- * 本地 API 门面:方法名/参数/返回形状沿用原服务端版 projectSyncApi 的 drama 子集,
+ * 本地 API 门面:方法名/参数/返回形状沿用原后端 projectSyncApi 的 drama 子集,
  * 业务代码零改动完成了从 REST 到本地 IndexedDB 的切换。
  */
 export const localApi = {
@@ -68,7 +68,6 @@ export const localApi = {
 
   clearProjectCache(): void {
     imageRepo.clearProjectCache();
-    imageRepo.revokeAll();
   },
 
   invalidateCachedImageData(assetId: string): void {
@@ -220,7 +219,7 @@ export const localApi = {
     return settingsRepo.savePreference(req);
   },
 
-  // ---------- 设置(开源版新增) ----------
+  // ---------- 设置(新增) ----------
 
   async getAppSettings(): Promise<AppSettings> {
     return settingsRepo.get();

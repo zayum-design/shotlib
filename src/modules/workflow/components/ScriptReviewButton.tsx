@@ -13,9 +13,11 @@
 // limitations under the License.
 
 import { useState } from 'react';
-import { Button, Input, Modal, Radio, Select } from 'antd';
+import { Button, Input, Modal, Radio, Select, Tooltip } from 'antd';
 import { ClipboardCheck } from 'lucide-react';
 import { useWorkflowStore } from '../stores/workflowStore';
+import { ScriptDeepThinkingSwitch } from './steps/ScriptInput';
+import { ModelPriceTag } from '@/shared/utils/modelPrice';
 import { diffScriptLines, collapseUnchangedLines } from '../utils/scriptDiffUtils';
 import { message } from '@/shared/utils/message';
 
@@ -46,6 +48,9 @@ const AUDIENCE_PRESETS = [
 export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled }) => {
   const {
     script,
+    textModel,
+    textModels,
+    setTextModel,
     reviewScript,
     isReviewingScript,
     applyModifiedScript,
@@ -169,7 +174,25 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
   const collapsedDiffItems = collapseUnchangedLines(diffLines);
 
   return (
-    <>
+    <div className="flex items-center gap-2">
+      {/* 校验修改使用的文本模型：与步骤2头部同一模型链路（深度思考开关共用 scriptDeepThinking） */}
+      <Select
+        value={textModel}
+        onChange={setTextModel}
+        disabled={isReviewingScript}
+        options={(textModels || []).map((m) => ({
+          value: m.id,
+          label: (
+            <Tooltip title={m.description}>
+              <span>{m.name}</span>
+            </Tooltip>
+          ),
+          disabled: m.disabled,
+        }))}
+        size="small" popupMatchSelectWidth={false}
+      />
+      <ModelPriceTag model={(textModels || []).find((m) => m.id === textModel)} />
+      <ScriptDeepThinkingSwitch />
       <Button
         size="small"
         disabled={disabled}
@@ -388,6 +411,6 @@ export const ScriptReviewButton: React.FC<ScriptReviewButtonProps> = ({ disabled
           </div>
         </div>
       </Modal>
-    </>
+    </div>
   );
 };

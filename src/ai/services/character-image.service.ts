@@ -276,8 +276,8 @@ export async function generatePortrait(
 }
 
 /**
- * 智能扩图(存根):原版走火山 AK/SK 签名异步任务,签名密钥不能下发浏览器,
- * 开源版不支持;请使用「重新生成」整图重出。
+ * 智能扩图(存根):火山 AK/SK 签名异步任务需后端持有密钥,不能下发浏览器,
+ * 不支持;请使用「重新生成」整图重出。
  */
 export async function outpaintView(
   _referenceImageUrl: string,
@@ -286,6 +286,6 @@ export async function outpaintView(
   return {
     success: false,
     imageUrl: '',
-    error: '开源版暂不支持智能扩图（需云厂商签名密钥），请使用「重新生成」',
+    error: '暂不支持智能扩图（需云厂商签名密钥），请使用「重新生成」',
   };
 }

@@ -329,6 +329,24 @@ const SimplifiedEpisodeFlowInner: React.FC<SimplifiedEpisodeFlowProps> = ({
                 />
 
                 <div className="flex items-center justify-end gap-3 pt-2">
+                  {/* 解析用文本模型选择：与「生成片段」按钮行同一布局（模型+价格+深度思考+按钮） */}
+                  <Select
+                    value={textModel}
+                    onChange={setTextModel}
+                    options={textModels.map((m) => ({
+                      value: m.id,
+                      label: (
+                        <Tooltip title={m.description}>
+                          <span>{m.name}</span>
+                        </Tooltip>
+                      ),
+                      disabled: m.disabled,
+                    }))}
+                    size="small" popupMatchSelectWidth={false}
+                  />
+                  <ModelPriceTag model={textModels.find(m => m.id === textModel)} />
+                  {/* 深度思考开关：开启且文本模型为推理模型时，剧本分解走流式深度思考 */}
+                  <EpisodeDeepThinkingSwitch purpose="parse" />
                   <Button
                     type="primary"
                     size="large"

@@ -16,8 +16,8 @@
  * 角色图像生成 API(纯前端版)
  *
  * - 生成调用本地 AI 编排层 character-image.service(提示词组装与后端一致)
- * - 智能扩图为存根(原版依赖云厂商签名密钥,不能下发浏览器)
- * - TTS/音色能力已移除(开源版无语音服务)
+ * - 智能扩图为存根(依赖云厂商签名密钥,不能下发浏览器)
+ * - TTS/音色能力已移除(无语音服务)
  */
 import type { ApiResponse } from './types';
 import { useWorkflowStore } from '../stores/workflowStore';
@@ -282,7 +282,7 @@ export interface ExpandCharacterViewResponse {
 }
 
 /**
- * 基于当前多视图扩图生成新的全身照(存根:依赖云厂商签名密钥,开源版不支持)
+ * 基于当前多视图扩图生成新的全身照(存根:依赖云厂商签名密钥,不支持)
  */
 export async function expandCharacterViewApi(
   _characterId: string,

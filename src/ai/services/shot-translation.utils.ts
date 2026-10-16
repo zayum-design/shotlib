@@ -51,6 +51,13 @@ export function translateCameraMovements(movements: string[]): string {
     rotate: '旋转',
     zoom: '变焦',
     handheld: '手持晃动',
+    through_legs: '双腿叉开',
+    over_waist: '过腰',
+    over_shoulder: '过肩',
+    reverse_swoop: '反向包抄',
+    god_view: '上帝视角',
+    bay_orbit: '迈克尔贝环绕',
+    rack_focus: '虚实焦切换',
   };
   return movements.map((m) => translations[m] || m).join('、') + '运镜';
 }

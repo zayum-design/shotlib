@@ -13,14 +13,14 @@
 // limitations under the License.
 
 /**
- * API 配置文件(开源版)
+ * API 配置文件
  *
- * 开源版无自建后端,本文件仅保留 URL 拼装工具与端点常量:
+ * 无自建后端,本文件仅保留 URL 拼装工具与端点常量:
  * - buildUrl 仍被少量本地工具引用,签名保持不变
- * - 原版的通用请求函数与登录态注入已随后端一起移除
+ * - 后端的通用请求函数与登录态注入已随后端一起移除
  */
 
-// API 路径前缀 - 从环境变量读取(开源版默认无后端,保持空字符串走相对路径)
+// API 路径前缀 - 从环境变量读取(默认无后端,保持空字符串走相对路径)
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
 
 // API 端点
@@ -70,7 +70,7 @@ export const API_ENDPOINTS = {
   // 分集发展方向预设
   DEVELOPMENT_DIRECTIONS: "/api/creator/script/development-directions",
 
-  // 用户素材管理(开源版为本地存根,见 shared/api/userMaterialApi.ts)
+  // 用户素材管理(为本地存根,见 shared/api/userMaterialApi.ts)
   USER_MATERIALS_LIST: "/api/creator/user-materials",
   USER_MATERIALS_DELETE: "/api/creator/user-materials/{id}",
 } as const;

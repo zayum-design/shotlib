@@ -89,7 +89,7 @@ export interface TextProcessingResponse {
 
 /**
  * 按提示词类型处理文本:加载模板作为 systemPrompt 后调模型
- * 对齐后端 text-processing.service.process(开源版恒同步,无 preview/async 分支)
+ * 对齐后端 text-processing.service.process(恒同步,无 preview/async 分支)
  */
 export async function processTextByPromptType(request: ProcessByPromptTypeRequest): Promise<TextProcessingResponse> {
   const systemPrompt = promptLoader.loadPromptTemplate(request.modelId, request.promptType);

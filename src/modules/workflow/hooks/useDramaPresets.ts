@@ -15,8 +15,8 @@
 /**
  * 短剧头像预设 Hook(纯前端版)
  *
- * 原版 fetch 后端 /api/creator/character/presets/avatar;
- * 开源版数据源为内置 src/config/presets/drama-avatar-options.json,Hook 签名不变。
+ * 后端 fetch 后端 /api/creator/character/presets/avatar;
+ * 数据源为内置 src/config/presets/drama-avatar-options.json,Hook 签名不变。
  */
 import { useState, useEffect } from 'react';
 import avatarOptionsJson from '@/config/presets/drama-avatar-options.json';

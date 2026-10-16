@@ -19,7 +19,7 @@
  *   调本地 AI 编排 aiModelService.generateEpisodes
  * - 首尾帧:调本地 image-processing(blob 化落库),失败对齐后端返回 {success:false, imageUrl:''}
  * - 视频:调本地 video-processing(提交即返回 taskId,轮询由 store 层 queryVideoTaskStatusApi 驱动)
- * - 视频合成(ffmpeg)为存根:开源版已移除,保留逐段视频下载
+ * - 视频合成(ffmpeg)为存根:已移除,保留逐段视频下载
  */
 import type { Character, Scene, Episode, Prop } from '@/shared/types/index';
 import type { ApiResponse } from './types';
@@ -245,7 +245,7 @@ export async function generateEpisodesApi(
     if (!episodes || episodes.length === 0) {
       throw new Error('AI 未返回任何片段，请重试');
     }
-    // 与原版 HTTP 反序列化边界等价:AI 层产出 dto 形状,消费方按 shared/types 消费
+    // 与后端 HTTP 反序列化边界等价:AI 层产出 dto 形状,消费方按 shared/types 消费
     return { success: true, data: { episodes: episodes as unknown as Episode[] } };
   } catch (error) {
     console.error('[episodeApi] 生成分镜片段失败:', error);
@@ -437,7 +437,7 @@ export interface GenerateFrameImageResponse {
 }
 
 /**
- * 生成片段视频(本地编排;开源版恒提交即返回 taskId,由轮询器查询结果)
+ * 生成片段视频(本地编排;恒提交即返回 taskId,由轮询器查询结果)
  */
 export async function generateEpisodeVideoApi(
   episodeId: string,
@@ -884,7 +884,7 @@ export async function generateLastFrameApi(
 
 
 /**
- * 合并当前分集已生成的片段视频为完整短片(存根:开源版已移除服务端 ffmpeg 合成,
+ * 合并当前分集已生成的片段视频为完整短片(存根:已移除服务端 ffmpeg 合成,
  * 请逐段下载片段视频)
  */
 export async function composeEpisodeVideosApi(
@@ -896,6 +896,6 @@ export async function composeEpisodeVideosApi(
   return {
     success: false,
     data: { videoUrl: '' },
-    message: '开源版已移除服务端视频合成（ffmpeg），请逐段下载片段视频',
+    message: '已移除服务端视频合成（ffmpeg），请逐段下载片段视频',
   };
 }

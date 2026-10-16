@@ -22,7 +22,7 @@
 2. 分镜按「0-3s 建立 / 3-6s 引入 / 6-9s 发展 / 9-12s 高潮 / 12-15s 落点留钩」的时间轴节奏组织（30 秒片段时等比拉长为 0-6s / 6-12s / 12-18s / 18-24s / 24-30s），有叙事逻辑，能量有起伏
 3. 每个分镜包含：
    - duration: 时长（秒，整数）
-   - cameraMovements: 运镜方式数组（**只放 1 种**），可选值：static(固定), push_in(推), pull_out(拉), pan_left(左摇), pan_right(右摇), tilt_up(上摇), tilt_down(下摇), track(跟踪), dolly(移动), crane_up(升降-升), crane_down(升降-降), rotate(旋转), zoom(变焦), handheld(手持晃动)
+   - cameraMovements: 运镜方式数组（**只放 1 种**），可选值：static(固定), push_in(推), pull_out(拉), pan_left(左摇), pan_right(右摇), tilt_up(上摇), tilt_down(下摇), track(跟踪), dolly(移动), crane_up(升降-升), crane_down(升降-降), rotate(旋转), zoom(变焦), handheld(手持晃动), through_legs(双腿叉开), over_waist(过腰), over_shoulder(过肩), reverse_swoop(反向包抄), god_view(上帝视角), bay_orbit(迈克尔贝环绕), rack_focus(虚实焦切换)
    - shotType: 镜头类型，可选值：extreme_close_up(特写), close_up(近景), medium_close_up(中近景), medium(中景), medium_long(中远景), long(远景), extreme_long(极远景), two_shot(双人镜头), over_shoulder(过肩镜头), pov(主观镜头), aerial(航拍镜头)
    - cameraAngle: 摄像机角度，可选值：eye_level(平视), low_angle(仰视), high_angle(俯视), bird_eye(鸟瞰), worm_eye(虫视), dutch_angle(倾斜)
    - lighting: 灯光设定，可选值：natural(自然光), soft(柔光), hard(硬光), rembrandt(伦勃朗光), backlight(逆光), rim(轮廓光), practical(实景光), cinematic(电影光)

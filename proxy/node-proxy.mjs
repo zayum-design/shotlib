@@ -105,6 +105,12 @@ const server = http.createServer(async (req, res) => {
     }
   }
   delete headers['x-proxy-token'];
+  // 不透传浏览器的 accept-encoding:部分厂商(如 DeepSeek)对 SSE 流也会按协商
+  // 算法压缩(实测返回 content-encoding: zstd),而 Node 的 undici 不解压 zstd,
+  // 代理又剔除了 content-encoding 响应头,浏览器把压缩字节当 SSE 文本解析——
+  // 表现为深度思考流式无增量、loading 思考过程不更新,最终连接中断报 network error。
+  // 删除该头后由 undici 自行协商(gzip/deflate/br 均可自动解压),SSE 以纯文本到达。
+  delete headers['accept-encoding'];
 
   try {
     const upstream = await fetch(targetUrl, {

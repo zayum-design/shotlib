@@ -87,7 +87,7 @@ export function useInstantDataLoader({
   useEffect(() => {
     if (!projectId || dataLoadedForProjectRef.current === projectId) return;
     dataLoadedForProjectRef.current = projectId;
-    // 开源版:登记当前项目,生成图片时 AI 层据此 blob 化落库(imageRepo)
+    // 登记当前项目,生成图片时 AI 层据此 blob 化落库(imageRepo)
     useProjectStore.getState().setCurrentProject(projectId);
 
     const load = async () => {

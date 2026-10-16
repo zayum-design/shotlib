@@ -141,7 +141,32 @@ export const CharacterPortraitGrid: React.FC<CharacterPortraitGridProps> = ({
         (x.episodeNumber === undefined || x.episodeNumber === currentEpisodeNumber),
     );
     if (duplicated) {
-      message.warning(`本集已存在同名形象照「${name}」`);
+      // 同名时不再直接中断：询问是否用历史形象照覆盖本集同名槽位
+      // （覆盖 = 槽位保留本集 name/episodeNumber，图片与提示词替换为历史版本）
+      Modal.confirm({
+        title: '本集已存在同名形象照',
+        content: `本集已有形象照「${name}」，是否用历史形象照覆盖它？覆盖后本集该形象照将直接引用历史图片与提示词。`,
+        okText: '覆盖',
+        cancelText: '取消',
+        okButtonProps: { danger: true },
+        onOk: () => {
+          const overwritten = images.map((x) =>
+            x?.isPortrait !== false &&
+            x?.name === name &&
+            (x.episodeNumber === undefined || x.episodeNumber === currentEpisodeNumber)
+              ? {
+                  ...x,
+                  imageUrl: img.imageUrl,
+                  assetId: img.assetId,
+                  prompt: img.prompt,
+                  isGenerating: false,
+                }
+              : x,
+          );
+          updateCharacter(character.id, { fullBodyImages: overwritten });
+          message.success(`已用历史形象照「${name}」覆盖本集同名形象照`);
+        },
+      });
       return;
     }
     images.push({ ...img, isGenerating: false, episodeNumber: currentEpisodeNumber });

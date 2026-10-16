@@ -15,7 +15,7 @@
 /**
  * 剧本相关 API(纯前端版)
  *
- * 原版为 HTTP 调用封装;开源版改为:
+ * 后端 HTTP 调用封装,本地改为:
  * - 静态预设(智能体/类型/技能/发展方向)直接读取内置 JSON
  * - 剧本生成/审阅/解析调用本地 AI 编排层(aiModelService),与后端 controller 的
  *   变量组装逻辑(subStyleHint/genreGuide/genreHooks)保持一致
@@ -106,7 +106,7 @@ export interface GenerateScriptRequest {
   subStyle?: string;   // 子风格ID（可选）
   artStyle?: string;   // 画风ID（可选）
   genre?: string;      // 剧本类型ID（可选）
-  async?: boolean;     // 是否异步执行(开源版忽略,恒同步)
+  async?: boolean;     // 是否异步执行(忽略,恒同步)
   isEnding?: boolean;  // 是否为大结局
 }
 
@@ -352,6 +352,88 @@ export async function reviewScriptApi(
   }
 }
 
+// ============ 流式校验/审阅/修改剧本（深度思考） ============
+
+/** 校验修改剧本流事件：思考增量 / 正文增量 / 完成 / 失败 */
+export type ReviewScriptStreamEvent =
+  | { type: 'reasoning'; delta: string }
+  | { type: 'content'; delta: string }
+  | { type: 'done'; data: ReviewScriptResponse }
+  | { type: 'error'; message: string };
+
+/**
+ * 流式校验/审阅/修改剧本（深度思考）：与 reviewScriptApi 同构（mode 三分支），
+ * 推理思考逐事件下发，结束时下发与非流式一致的结构化结果。
+ * 调用方按全局剧本深度思考开关（scriptDeepThinking）分流。
+ */
+export async function reviewScriptStreamApi(
+  body: {
+    script: string;
+    summary: string;
+    mode: ScriptReviewMode;
+    requirement?: string;
+    model: string;
+    creationMode?: string;
+    characters?: ReviewCharacterRef[];
+    audiences?: string[];
+  },
+  handlers: { onEvent: (ev: ReviewScriptStreamEvent) => void; onError?: (err: Error) => void },
+): Promise<void> {
+  try {
+    let data: ReviewScriptResponse;
+    if (body.mode === 'modify') {
+      const newScript = await aiModelService.modifyScriptStream(
+        body.model,
+        {
+          script: body.script,
+          summary: body.summary || undefined,
+          requirement: body.requirement || '',
+        },
+        {
+          onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+          onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+        },
+      );
+      data = { mode: body.mode, script: newScript };
+    } else if (body.mode === 'audience-review') {
+      const report = await aiModelService.audienceReviewScriptStream(
+        body.model,
+        {
+          script: body.script,
+          summary: body.summary || undefined,
+          audiences: body.audiences,
+        },
+        {
+          onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+          onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+        },
+      );
+      data = { mode: body.mode, report };
+    } else {
+      const { report, characterSuggestions } = await aiModelService.reviewScriptStream(
+        body.model,
+        {
+          script: body.script,
+          summary: body.summary || undefined,
+          creationMode: body.creationMode,
+          characters: body.characters,
+        },
+        {
+          onReasoning: (delta) => handlers.onEvent({ type: 'reasoning', delta }),
+          onContent: (delta) => handlers.onEvent({ type: 'content', delta }),
+        },
+      );
+      data = { mode: body.mode, report, characterSuggestions };
+    }
+    handlers.onEvent({ type: 'done', data });
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    console.error('[scriptApi] 流式校验修改剧本失败:', error);
+    handlers.onEvent({ type: 'error', message: messageText });
+    handlers.onError?.(error instanceof Error ? error : new Error(messageText));
+  }
+}
+
 // ============ 补充缺失角色 API ============
 
 /** 待补充的缺失角色条目（来自校验审阅报告） */
@@ -547,7 +629,7 @@ export interface HotScriptItem {
   clicks: number;
 }
 
-/** 获取热门剧本列表(开源版已下线服务端热门剧本,恒返回空列表) */
+/** 获取热门剧本列表(已下线服务端热门剧本,恒返回空列表) */
 export async function getHotScriptsApi(_subStyle?: string): Promise<ApiResponse<{ items: HotScriptItem[] }>> {
   return { success: true, data: { items: [] } };
 }
@@ -635,7 +717,7 @@ export interface ScriptJobStatusResponse {
 }
 
 /**
- * 查询剧本生成异步任务状态(开源版无服务端队列,AI 调用恒同步,此接口仅为兼容保留)
+ * 查询剧本生成异步任务状态(无服务端队列,AI 调用恒同步,此接口仅为兼容保留)
  */
 export async function getScriptJobStatusApi(
   _jobId: string | number,
@@ -643,7 +725,7 @@ export async function getScriptJobStatusApi(
   return {
     success: false,
     data: { jobId: '', state: 'unavailable', attemptsMade: 0, timestamp: 0 },
-    message: '开源版无服务端队列,剧本生成恒为同步调用',
+    message: '无服务端队列,剧本生成恒为同步调用',
   };
 }
 

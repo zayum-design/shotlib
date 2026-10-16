@@ -15,8 +15,8 @@
 /**
  * 本地上传图片对话框(纯前端精简版)
  *
- * 原版含「真人资产 / 素材库 / 扫码上传」等依赖服务端的 tab,开源版仅保留本地上传。
- * props 签名与原版兼容:资产库相关 props 保留但不再渲染对应 tab。
+ * 「真人资产 / 素材库 / 扫码上传」等依赖服务端的 tab 已移除,仅保留本地上传。
+ * props 签名与后端兼容:资产库相关 props 保留但不再渲染对应 tab。
  */
 import React, { useEffect, useRef, useState } from "react";
 import { Modal, Upload, Button, message } from "antd";
@@ -32,9 +32,9 @@ export interface AvatarUploadDialogProps {
   onConfirm: (file: File) => Promise<void>;
   /** 多文件本地上传确认(multiple 为 true 时优先于 onConfirm) */
   onConfirmFiles?: (files: File[]) => Promise<void>;
-  /** 兼容原版签名:服务端资产库已在开源版移除,传入无效 */
+  /** 兼容后端签名:服务端资产库已移除,传入无效 */
   showAssetTab?: boolean;
-  /** 兼容原版签名:原版用于隐藏本地上传 tab(仅显示服务端资产),开源版恒显示本地上传 */
+  /** 兼容后端签名:原用于隐藏本地上传 tab(仅显示服务端资产),现恒显示本地上传 */
   hideLocalTab?: boolean;
   onSelectAsset?: (asset: UserMaterialItem) => Promise<void>;
   onSelectAssets?: (assets: UserMaterialItem[]) => Promise<void>;

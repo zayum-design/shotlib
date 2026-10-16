@@ -30,7 +30,7 @@ import { DramaProjectList } from './components/DramaProjectList';
 import { CreateProjectModal, EditProjectModal } from './components/CreateProjectModals';
 import { invalidateProjectStats } from './projectStats';
 
-/** 首页 Tab 配置(开源版仅短剧工作流一个创作模块) */
+/** 首页 Tab 配置(仅短剧工作流一个创作模块) */
 const createTabs: Array<{ key: 'drama'; label: string; icon: typeof Clapperboard }> = [
   { key: 'drama', label: '短剧', icon: Clapperboard },
 ];

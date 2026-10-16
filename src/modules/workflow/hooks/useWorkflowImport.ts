@@ -23,6 +23,7 @@ import {
   saveEpisodeDataToStorage,
   cancelDebouncedSave,
 } from '@/modules/workflow/stores/workflowStore';
+import { clearEpisodeDataVersion } from '@/modules/workflow/stores/workflowStore.sync.save';
 import { getEpisodeDataKey, getProjectAssetsKey } from '@/modules/workflow/utils/workflowUtils';
 import { saveGuard } from '@/modules/workflow/utils/workflowSaveGuard';
 import { userStorage } from '@/shared/utils/userScopedStorage';
@@ -30,10 +31,16 @@ import { remapImportedIds } from '@/modules/workflow/utils/importIdRemapUtils';
 import { localApi } from '@/storage';
 import {
   extractScriptText,
-  detectCompletedStepCount,
-  filterImportDataBySteps,
+  detectEpisodeStepOptions,
+  filterImportDataBySelection,
+  type EpisodeStepOption,
 } from '@/modules/workflow/utils/importStepUtils';
-import { ImportStepSelectModal } from '@/modules/workflow/components/ImportStepSelectModal';
+import { ImportStepSelectModal, type ImportSelection } from '@/modules/workflow/components/ImportStepSelectModal';
+import {
+  ImportProgressModal,
+  type ImportProgressState,
+  type ImportEpisodeProgress,
+} from '@/modules/workflow/components/ImportProgressModal';
 import { useSearchParams } from 'react-router-dom';
 import { message } from '@/shared/utils/message';
 
@@ -51,10 +58,16 @@ function stripProjectImageAssetIds(obj: any): any {
     const result: any = {};
     for (const [key, value] of Object.entries(obj)) {
       // 剥离图片对象顶层的 assetId（image_asset UUID，指向原项目，需在新项目重建）
+      // 但保留 seedance 内部的 assetId（火山合规 assetId，跨项目通用，导入时随数据保留）
       if (key === 'assetId' || key === 'imageAssetIds') {
         continue;
       }
-      result[key] = stripProjectImageAssetIds(value);
+      // seedance 是合规数据对象，内部 assetId 是火山合规 ID，不递归剥离
+      if (key === 'seedance') {
+        result[key] = value;
+      } else {
+        result[key] = stripProjectImageAssetIds(value);
+      }
     }
     return result;
   }
@@ -145,10 +158,15 @@ function syncEpisodeAssetsFromProject(
 }
 
 /**
- * 根据实际数据校准 currentStep，避免有片段但 step 不可点击
+ * 根据实际数据校准 currentStep，避免有数据但 step 不可点击
  *
- * 导出数据中 currentStep 可能滞后于实际数据（如用户回到 step1 修改后导出），
- * 导入后需根据片段/角色场景数据将 currentStep 推进到合理位置。
+ * 导出数据中 currentStep 可能滞后于实际数据（如用户回到 step1 修改后导出，
+ * 或某分集只完成了剧本文本、尚未做分解），导入后需根据实际数据将
+ * currentStep 推进到合理位置：
+ * - 有片段：推进到片段生成步
+ * - 有活跃角色/场景：推进到分解步
+ * - 有剧本文本：推进到剧本编辑步（与 detectEpisodeStepOptions 的判定一致，
+ *   否则仅有剧本的分集导入后 currentStep=0，sidebar 前序步骤全部不可点击）
  */
 function calibrateCurrentStep(
   currentStep: number,
@@ -156,15 +174,17 @@ function calibrateCurrentStep(
   activeCharacterIds: string[],
   activeSceneIds: string[],
   isSimplifiedMode: boolean,
+  script?: string,
 ): number {
   const hasEpisodes = Array.isArray(episodes) && episodes.length > 0;
   const hasActiveCharScene = (activeCharacterIds?.length ?? 0) > 0 || (activeSceneIds?.length ?? 0) > 0;
+  const hasScript = typeof script === 'string' && script.trim().length > 0;
   const targetForEpisodes = isSimplifiedMode ? 2 : 3;
   const targetForSplit = isSimplifiedMode ? 1 : 2;
 
   let step = currentStep;
   if (hasEpisodes && step < targetForEpisodes) step = targetForEpisodes;
-  else if (hasActiveCharScene && step < targetForSplit) step = targetForSplit;
+  else if ((hasActiveCharScene || hasScript) && step < targetForSplit) step = targetForSplit;
   return step;
 }
 
@@ -185,17 +205,18 @@ interface UseWorkflowImportOptions {
 }
 
 /**
- * 导入时为角色图片补建 image_asset 行。
+ * 导入时为角色/道具图片补建 image_asset 行。
  *
  * 跨项目导入时旧 assetId 已被 stripProjectImageAssetIds 剥离（指向原项目），
  * 仅靠 character 行的 imageUrl 不足以让新项目的 resolveImageAssets 正常工作。
- * 这里按 imageUrl 在当前项目批量新建 image_asset 行（asset_type='character_image'），
+ * 这里按 imageUrl 在当前项目批量新建 image_asset 行（asset_type='character_image'/'prop_image'），
  * 并把返回的 assetId 回填到所有引用该 url 的角色图片上（master + 各分集副本）。
  */
 async function ensureCharacterImageAssets(
   projectId: string,
   cleanedAssets: any,
   cleanedEpisodesData: Record<number, any>,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<void> {
   type Pending = {
     url: string;
@@ -241,32 +262,11 @@ async function ensureCharacterImageAssets(
   }
 
   // 道具图片：imageUrls/imageAssetIds 平行数组（assetId 已剥离），按 url 重建 prop_image 资产行
-  if (Array.isArray(cleanedAssets?.props)) {
-    for (const prop of cleanedAssets.props) {
-      if (!prop || typeof prop !== 'object') continue;
-      const urls: string[] = Array.isArray(prop.imageUrls) ? prop.imageUrls.filter(Boolean) : [];
-      if (urls.length === 0) continue;
-      try {
-        const res = await localApi.createImageAssets(projectId, {
-          assets: urls.map((url) => ({
-            episode_number: 0,
-            asset_type: 'prop_image',
-            original_url: url,
-            source: 'ai',
-            metadata: { propId: prop.id, propName: prop.name, kind: 'prop' },
-          })),
-        });
-        if (res.success && Array.isArray(res.data)) {
-          const newIds = res.data.map((created: any) => created?.id).filter(Boolean);
-          if (newIds.length === urls.length) {
-            prop.imageAssetIds = newIds;
-          }
-        }
-      } catch (e) {
-        console.warn('[ensureCharacterImageAssets] 重建道具图片资产失败:', prop?.name, e);
-      }
-    }
-  }
+  const propsWithImages = Array.isArray(cleanedAssets?.props)
+    ? cleanedAssets.props.filter(
+        (p: any) => p && typeof p === 'object' && Array.isArray(p.imageUrls) && p.imageUrls.filter(Boolean).length > 0,
+      )
+    : [];
 
   for (const epData of Object.values(cleanedEpisodesData || {})) {
     const ep = epData as any;
@@ -275,8 +275,43 @@ async function ensureCharacterImageAssets(
     }
   }
 
+  // 进度统计：道具图片批次 + 角色图片批次
+  let progressDone = 0;
+  const progressTotal = propsWithImages.length + (pending.length > 0 ? 1 : 0);
+  const reportProgress = () => {
+    if (onProgress && progressTotal > 0) onProgress(progressDone, progressTotal);
+  };
+
+  for (const prop of propsWithImages) {
+    if (!prop || typeof prop !== 'object') continue;
+    const urls: string[] = ((prop.imageUrls || []) as string[]).filter(Boolean);
+    if (urls.length === 0) continue;
+    try {
+      const res = await localApi.createImageAssets(projectId, {
+        assets: urls.map((url) => ({
+          episode_number: 0,
+          asset_type: 'prop_image',
+          original_url: url,
+          source: 'ai',
+          metadata: { propId: prop.id, propName: prop.name, kind: 'prop' },
+        })),
+      });
+      if (res.success && Array.isArray(res.data)) {
+        const newIds = res.data.map((created: any) => created?.id).filter(Boolean);
+        if (newIds.length === urls.length) {
+          prop.imageAssetIds = newIds;
+        }
+      }
+    } catch (e) {
+      console.warn('[ensureCharacterImageAssets] 重建道具图片资产失败:', prop?.name, e);
+    }
+    progressDone += 1;
+    reportProgress();
+  }
+
   if (pending.length === 0) return;
 
+  // 角色图片为一次批量创建
   try {
     const res = await localApi.createImageAssets(projectId, {
       assets: pending.map((p) => ({
@@ -287,6 +322,8 @@ async function ensureCharacterImageAssets(
         metadata: p.metadata,
       })),
     });
+    progressDone += 1;
+    reportProgress();
     if (!res.success || !Array.isArray(res.data) || res.data.length === 0) {
       console.warn('[ensureCharacterImageAssets] 创建 image_asset 失败:', res.message);
       return;
@@ -329,22 +366,52 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 待导入数据 + 检测到的完成步数（弹窗选择导入前 N 步）
+  // 待导入数据 + 检测到的各分集步骤选项（弹窗选择分集与每集步骤）
   const [pendingImport, setPendingImport] = useState<{
     data: any;
-    stepCount: number;
-    episodeCount?: number;
+    episodes: EpisodeStepOption[];
+    isLegacy: boolean;
   } | null>(null);
+
+  // 导入进度状态（确认导入后展示）
+  const [importProgress, setImportProgress] = useState<ImportProgressState>({
+    open: false,
+    percent: 0,
+    stage: '',
+    episodes: [],
+    done: false,
+  });
 
   const [, setSearchParams] = useSearchParams();
 
-  /** 实际执行导入：按所选步数过滤后清空目标项目并写入 */
+  /** 实际执行导入：按所选分集/步骤过滤后清空目标项目并写入，全程展示进度 */
   const proceedImport = useCallback(
-    async (rawData: any, maxStep: number) => {
+    async (rawData: any, selection: ImportSelection) => {
       if (!projectId) {
         message.error('导入失败：当前项目 ID 为空');
         return;
       }
+      const isV2 = rawData.version === 2 && rawData.projectAssets;
+      // 目标分集：过滤后的 currentEpisode（原 currentEpisode 未选中时为最小选中分集）
+      const selectedNums = Object.keys(selection).map(Number).sort((a, b) => a - b);
+      const targetEpisodeNum = isV2
+        ? (selectedNums.includes(rawData.currentEpisode) ? rawData.currentEpisode : selectedNums[0]) || 1
+        : 1;
+      const targetStep = isV2 ? (selection[targetEpisodeNum] ?? 5) : (Object.values(selection)[0] ?? 5);
+
+      // 初始化进度弹窗
+      setImportProgress({
+        open: true,
+        percent: 2,
+        stage: '清空项目数据…',
+        episodes: selectedNums.map((n) => ({
+          episodeNumber: isV2 ? n : 1,
+          maxStep: selection[n] ?? 5,
+          status: 'pending' as const,
+        })),
+        done: false,
+      });
+
       // 设置导入锁：导入执行期间阻止项目切换等并发操作
       useWorkflowStore.getState().setIsImporting(true);
       try {
@@ -353,42 +420,65 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
         } catch (e) {
           console.error('[导入] 清空项目数据失败:', e);
           message.error('导入失败：清空项目数据失败，请重试');
+          setImportProgress((p) => ({ ...p, open: false }));
           return;
         }
 
-        // 按所选步数过滤数据（只保留前 maxStep 步的产物）
-        const data = filterImportDataBySteps(rawData, maxStep);
+        // 按所选分集与每集步骤过滤数据
+        const data = filterImportDataBySelection(rawData, selection);
 
-        if (data.version === 2 && data.projectAssets) {
-          await applyV2ProjectData(data, {
+        if (isV2) {
+          const failed = await applyV2ProjectData(data, {
             projectId,
             currentEpisode,
             setEpisodeList,
             setEpisodeIdMap,
             setCurrentEpisode,
             saveProjectEpisodeInfo,
+            onProgress: (percent, stage) => setImportProgress((p) => ({ ...p, percent, stage: stage ?? p.stage })),
+            onEpisodeStatus: (episodeNumber, status) =>
+              setImportProgress((p) => ({
+                ...p,
+                episodes: p.episodes.map((e) => (e.episodeNumber === episodeNumber ? { ...e, status } : e)),
+              })),
           });
+          if (failed === null) {
+            // 导入中途中止（项目切换等）：直接结束，不展示完成态
+            setImportProgress((p) => ({ ...p, open: false }));
+            return;
+          }
+          setImportProgress((p) => ({ ...p, percent: 100, done: true, stage: '导入完成' }));
+          if (failed.length > 0) {
+            message.warning(`导入完成，但第 ${failed.join('、')} 集同步到后端失败，请勿刷新页面并重试导入`);
+          } else {
+            message.success(`已导入 ${selectedNums.length} 个分集的数据`);
+          }
         } else {
+          setImportProgress((p) => ({ ...p, percent: 40, stage: '写入当前分集数据…' }));
           applyLegacyData(data, {
             projectId,
             currentEpisode,
             saveEpisodeData,
           });
+          setImportProgress((p) => ({ ...p, percent: 100, done: true, stage: '导入完成' }));
+          message.success(`已导入前 ${targetStep} 步数据`);
         }
 
         // 重置加载状态
         resetLoadingStates();
-        message.success(`已导入前 ${maxStep} 步数据`);
 
-        // 跳转到导入的步骤（URL step 从 1 开始）
+        // 跳转到目标分集所选的步骤（URL step 从 1 开始）
         setSearchParams(
           (prev) => {
             const next = new URLSearchParams(prev);
-            next.set('step', String(maxStep));
+            next.set('step', String(targetStep));
             return next;
           },
           { replace: true },
         );
+
+        // 完成态停留片刻后关闭进度弹窗
+        setTimeout(() => setImportProgress((p) => ({ ...p, open: false })), 1200);
       } finally {
         // 释放导入锁
         useWorkflowStore.getState().setIsImporting(false);
@@ -397,17 +487,19 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
     [projectId, currentEpisode, setEpisodeList, setEpisodeIdMap, setCurrentEpisode, saveEpisodeData, saveProjectEpisodeInfo, resetLoadingStates, setSearchParams],
   );
 
-  /** 步骤选择弹窗确认后：走原有的两次高危确认，再执行导入 */
+  /** 分集/步骤选择弹窗确认后：走原有的两次高危确认，再执行导入 */
   const handleStepSelectConfirm = useCallback(
-    (maxStep: number) => {
+    (selection: ImportSelection) => {
       const pending = pendingImport;
       setPendingImport(null);
       if (!pending) return;
       const rawData = pending.data;
+      const epCount = Object.keys(selection).length;
+      const maxStep = Math.max(...Object.values(selection));
 
       Modal.confirm({
         title: '确认导入？',
-        content: `⚠️ 高危操作：将清空当前项目的所有分集、片段、角色、场景、剧本、图片、快照和生成任务记录，并替换为导入内容（前 ${maxStep} 步数据），删除后无法恢复。`,
+        content: `⚠️ 高危操作：将清空当前项目的所有分集、片段、角色、场景、剧本、图片、快照和生成任务记录，并替换为导入内容（${epCount} 个分集，各分集导入到所选步骤，最深到第 ${maxStep} 步），删除后无法恢复。`,
         okText: '继续',
         okButtonProps: { danger: true },
         cancelText: '取消',
@@ -418,7 +510,12 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
             okText: '确认导入',
             okButtonProps: { danger: true },
             cancelText: '取消',
-            onOk: () => proceedImport(rawData, maxStep),
+            // 注意：onOk 不能返回 proceedImport 的 Promise——
+            // antd confirm 会等 Promise 完成才关闭弹窗，整个导入期间确认框
+            // 会盖在进度弹窗上面。改为立即关闭，导入转后台由进度弹窗展示
+            onOk: () => {
+              void proceedImport(rawData, selection);
+            },
           });
         },
       });
@@ -472,19 +569,15 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
             return;
           }
 
-          // 识别文件中已完成的步数（连续，1-5）
-          const stepCount = detectCompletedStepCount(data);
-          if (stepCount < 1) {
+          // 识别各分集已完成的步数（连续，1-5）
+          const episodes = detectEpisodeStepOptions(data);
+          if (episodes.length === 0) {
             message.error('导入失败：文件中未检测到已完成的步骤数据（无剧本文本）');
             return;
           }
 
-          // 打开步骤选择弹窗：用户选择导入前 N 步（连续，不可隔步）
-          setPendingImport({
-            data,
-            stepCount,
-            episodeCount: Array.isArray(data.episodeList) ? data.episodeList.length : undefined,
-          });
+          // 打开分集/步骤选择弹窗：用户选择导入哪些分集、每集导入到第几步
+          setPendingImport({ data, episodes, isLegacy: !isV2ProjectData });
         } catch (err) {
           console.error('导入数据失败:', err);
           message.error('导入失败：文件解析错误，请确认是有效的 JSON 文件');
@@ -510,21 +603,28 @@ export function useWorkflowImport(options: UseWorkflowImportOptions) {
     [],
   );
 
-  // 步骤选择弹窗（由页面渲染；.ts 文件中用 createElement 避免 JSX 语法）
+  // 分集/步骤选择弹窗 + 导入进度弹窗（由页面渲染；.ts 文件中用 createElement 避免 JSX 语法）
   const importStepModal = pendingImport
     ? createElement(ImportStepSelectModal, {
         open: true,
-        stepCount: pendingImport.stepCount,
-        episodeCount: pendingImport.episodeCount,
+        episodes: pendingImport.episodes,
+        isLegacy: pendingImport.isLegacy,
         onCancel: () => setPendingImport(null),
         onConfirm: handleStepSelectConfirm,
       })
     : null;
 
-  return { fileInputRef, handleFileChange, importStepModal };
+  const importProgressModal = createElement(ImportProgressModal, { state: importProgress });
+
+  return { fileInputRef, handleFileChange, importStepModal, importProgressModal };
 }
 
 // ===== v2 完整项目数据处理 =====
+/**
+ * 导入进度回调契约：
+ * - onProgress(percent, stage?)：总体进度（0-100）与阶段描述
+ * - onEpisodeStatus(episodeNumber, status)：各分集后端同步状态
+ */
 async function applyV2ProjectData(
   data: any,
   ctx: {
@@ -539,13 +639,18 @@ async function applyV2ProjectData(
       currentEpisode: number,
       episodeIdMap: Record<number, string>,
     ) => void;
+    onProgress?: (percent: number, stage?: string) => void;
+    onEpisodeStatus?: (episodeNumber: number, status: ImportEpisodeProgress['status']) => void;
   },
-) {
-  const { projectId, currentEpisode, setEpisodeList, setEpisodeIdMap, setCurrentEpisode, saveProjectEpisodeInfo } = ctx;
+): Promise<number[] | null> {
+  const {
+    projectId, currentEpisode, setEpisodeList, setEpisodeIdMap, setCurrentEpisode,
+    saveProjectEpisodeInfo, onProgress, onEpisodeStatus,
+  } = ctx;
 
   if (!projectId) {
     message.error('导入失败：当前项目 ID 为空');
-    return;
+    return [];
   }
 
   // 捕获导入开始时的项目 ID，用于后续关键操作前校验项目上下文
@@ -571,6 +676,14 @@ async function applyV2ProjectData(
       try { console.warn(new Error().stack); } catch { /* ignore */ }
     }
   });
+
+  /** 中止导入：释放诊断订阅并返回 null（调用方据此不展示完成态） */
+  const abortImport = (): null => {
+    __unsubImport();
+    return null;
+  };
+
+  onProgress?.(8, '解析并重映射数据…');
 
   const rawAssets = data.projectAssets || {};
   const rawEpisodesData = data.episodesData || {};
@@ -666,12 +779,15 @@ async function applyV2ProjectData(
   // 校验项目上下文：ensureCharacterImageAssets 前确认项目未切换
   if (!validateProjectContext('ensureCharacterImageAssets')) {
     message.warning('导入已中止：项目已切换');
-    return;
+    return abortImport();
   }
 
-  // 项目旧数据已在导入前由 clearProjectData 彻底清空（drama-episode.service.clearProjectData），
+  // 项目旧数据已在导入前由 clearProjectData 彻底清空，
   // 此处不再单独删除资产；ensureCharacterImageAssets 会按导入数据重建 image_asset 行。
-  await ensureCharacterImageAssets(projectId, cleanedAssets, cleanedEpisodesData);
+  onProgress?.(12, '重建图片资产…');
+  await ensureCharacterImageAssets(projectId, cleanedAssets, cleanedEpisodesData, (done, total) => {
+    onProgress?.(12 + Math.round(28 * (total > 0 ? done / total : 1)), `重建图片资产（${done}/${total}）…`);
+  });
 
   // 项目级剧本（旧格式回退用）和目标分集专属剧本
   const importedScript = typeof cleanedAssets.script === 'string' ? cleanedAssets.script : '';
@@ -689,11 +805,20 @@ async function applyV2ProjectData(
   // 校验项目上下文：setState 写入前确认项目未切换
   if (!validateProjectContext('setState-写入数据')) {
     message.warning('导入已中止：项目已切换');
-    return;
+    return abortImport();
   }
 
   // 关键修复：先把 store 中的分集号切换到目标分集，确保后续 setState 触发的自动保存也落到正确分集
   useWorkflowStore.setState({ currentProjectId: projectId, currentEpisodeNumber: targetEpisodeNum });
+
+  onProgress?.(44, '写入本地缓存…');
+  // 同步到后端的分集总数（目标分集 + 其余分集），用于按分集推进进度（50% → 100%）
+  const syncEpisodeNumbers = Object.keys(cleanedEpisodesData).map(Number).filter((n) => !isNaN(n));
+  const syncTotal = syncEpisodeNumbers.length || 1;
+  let syncDone = 0;
+  const reportSyncProgress = () => {
+    onProgress?.(50 + Math.round(50 * (syncDone / syncTotal)));
+  };
 
   try {
     // 加载项目资产到 workflowStore
@@ -721,18 +846,22 @@ async function applyV2ProjectData(
       audioAssets: cleanedAssets.audioAssets ?? [],
       // 关键修复：使用目标分集的专属剧本，而非项目级剧本
       script: targetScript,
-      // 当前分集数据（currentStep 根据实际数据校准，避免有片段但 step 不可点击）
+      // 当前分集数据（currentStep 根据实际数据校准，避免有数据但 step 不可点击）
       currentStep: calibrateCurrentStep(
         targetEpisodeData.currentStep ?? 0,
         targetEpisodeData.episodes ?? [],
         targetEpisodeData.activeCharacterIds ?? [],
         targetEpisodeData.activeSceneIds ?? [],
         targetEpisodeData.isSimplifiedMode ?? false,
+        targetScript,
       ),
       topic: targetEpisodeData.topic ?? '',
       summary: targetEpisodeData.summary ?? '',
       previousEpisodeScript: targetEpisodeData.previousEpisodeScript ?? '',
       previousEpisodeSummary: targetEpisodeData.previousEpisodeSummary ?? '',
+      // 关键修复：恢复上集片段梗概与合成视频地址，避免导入后第2+集续写/视频合成页数据缺失
+      previousEpisodeFragments: targetEpisodeData.previousEpisodeFragments ?? [],
+      composedVideoUrl: targetEpisodeData.composedVideoUrl ?? '',
       isEnding: targetEpisodeData.isEnding ?? false,
       isSimplifiedMode: targetEpisodeData.isSimplifiedMode ?? false,
       activeCharacterIds: targetEpisodeData.activeCharacterIds ?? [],
@@ -796,6 +925,7 @@ async function applyV2ProjectData(
     if (targetScript.trim().length > 0) {
       await saveScriptToStorage(projectId, targetEpisodeNum, targetScript);
     }
+    onProgress?.(48, '本地缓存写入完成，准备同步后端…');
 
     if (data.episodeList) {
       saveProjectEpisodeInfo(projectId, data.episodeList, data.currentEpisode ?? currentEpisode, remappedEpisodeIdMap);
@@ -804,7 +934,7 @@ async function applyV2ProjectData(
     // 校验项目上下文：saveToServer 前确认项目未切换
     if (!validateProjectContext('saveToServer')) {
       message.warning('导入已中止：项目已切换');
-      return;
+      return null;
     }
 
     // 关键修复：立即同步到后端，确保导入数据持久化到正确分集
@@ -823,17 +953,31 @@ async function applyV2ProjectData(
       eps: stateSnapshot.episodes?.length,
       activeChar: stateSnapshot.activeCharacterIds?.length,
     });
+
+    // 关键修复（导入 409 根因）：clearProjectData 已清空并重建分集行（version 重置为 1），
+    // 此时页面残留的 expectedVersion（导入前加载/切换分集时记录）必然与新版号不符，
+    // 带 expectedVersion 保存会被后端 409 拒绝——导入独占项目状态，清除版本基准强制写入
+    clearEpisodeDataVersion();
+
+    onEpisodeStatus?.(targetEpisodeNum, 'saving');
+    onProgress?.(50, `同步第 ${targetEpisodeNum} 集到后端…`);
     const success = await saveToServer(stateSnapshot, targetEpisodeNum);
+    const failedEpisodes: number[] = [];
     if (success) {
       console.log(`[导入] 第${targetEpisodeNum}集数据已同步到后端`);
+      onEpisodeStatus?.(targetEpisodeNum, 'done');
     } else {
       console.warn(`[导入] 第${targetEpisodeNum}集数据同步到后端失败`);
+      onEpisodeStatus?.(targetEpisodeNum, 'failed');
+      failedEpisodes.push(targetEpisodeNum);
     }
+    syncDone += 1;
+    reportSyncProgress();
 
     // 校验项目上下文：保存非目标分集前确认项目未切换
     if (!validateProjectContext('saveEpisodeDataToServer-非目标分集')) {
       console.warn('[导入] 项目已切换，跳过保存剩余分集数据');
-      return;
+      return failedEpisodes;
     }
 
     // 关键修复：保存所有非目标分集的数据到后端
@@ -864,11 +1008,17 @@ async function applyV2ProjectData(
           epData.activeCharacterIds ?? [],
           epData.activeSceneIds ?? [],
           epIsSimplified,
+          extractScriptText(epData.script),
         ),
         topic: epData.topic ?? '',
         summary: epData.summary ?? '',
         previousEpisodeScript: epNum === 1 ? '' : (epData.previousEpisodeScript ?? ''),
         previousEpisodeSummary: epNum === 1 ? '' : (epData.previousEpisodeSummary ?? ''),
+        // 关键修复：逐集恢复上集片段梗概/道具/合成视频地址，
+        // 否则这些字段会沿用目标分集（stateSnapshot）的值写入错误分集，导致导入数据不全/错乱
+        previousEpisodeFragments: epNum === 1 ? [] : (epData.previousEpisodeFragments ?? []),
+        activePropIds: epData.activePropIds ?? [],
+        composedVideoUrl: epData.composedVideoUrl ?? '',
         isEnding: epData.isEnding ?? false,
         isSimplifiedMode: epData.isSimplifiedMode ?? (epNum !== 1),
         activeCharacterIds: epData.activeCharacterIds ?? [],
@@ -881,6 +1031,8 @@ async function applyV2ProjectData(
 
       // 临时切换 store 中的分集号，确保 saveEpisodeDataToServer 能找到正确的 episodeId
       useWorkflowStore.setState({ currentProjectId: projectId, currentEpisodeNumber: epNum });
+      // 防止导入期间订阅者重新武装自动保存（isImporting 守卫之外的双保险）
+      cancelDebouncedSave();
 
       // 同步该集的剧本到 localStorage
       const epScript = typeof epData.script === 'string' ? epData.script : '';
@@ -888,21 +1040,35 @@ async function applyV2ProjectData(
         await saveScriptToStorage(projectId, epNum, epScript);
       }
 
+      // 关键修复（导入 409 根因）：模块级版本号在上一集保存成功后已变成该集的新版本号，
+      // 直接用于本集（新行 version=1）必然 409——逐集清除版本基准，强制写入
+      clearEpisodeDataVersion();
+
+      onEpisodeStatus?.(epNum, 'saving');
+      onProgress?.(50 + Math.round(50 * (syncDone / syncTotal)), `同步第 ${epNum} 集到后端…`);
       try {
         const epSuccess = await saveEpisodeDataToServer(epStateSnapshot, epNum);
         if (epSuccess) {
           console.log(`[导入] 第${epNum}集数据已同步到后端`);
+          onEpisodeStatus?.(epNum, 'done');
         } else {
           console.warn(`[导入] 第${epNum}集数据同步到后端失败`);
+          onEpisodeStatus?.(epNum, 'failed');
+          failedEpisodes.push(epNum);
         }
       } catch (epErr) {
         console.warn(`[导入] 第${epNum}集数据同步异常:`, epErr);
+        onEpisodeStatus?.(epNum, 'failed');
+        failedEpisodes.push(epNum);
       }
+      syncDone += 1;
+      reportSyncProgress();
     }
+    return failedEpisodes;
   } finally {
     // 始终恢复 store 中的分集号到目标分集
     // 导入循环中临时切换了 currentEpisodeNumber，必须恢复，否则切换分集时
-    // flushSave() 会把目标分集的数据错误地保存到最后一集（#2集）的后端记录中
+    // flushSave() 会把目标分集的数据错误地保存到最后一集的后端记录中
     useWorkflowStore.setState({ currentEpisodeNumber: targetEpisodeNum });
     __unsubImport();
   }

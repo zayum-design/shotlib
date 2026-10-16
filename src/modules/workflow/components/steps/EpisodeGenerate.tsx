@@ -170,11 +170,11 @@ export const EpisodeGenerate: React.FC<EpisodeGenerateProps> = ({ onTabChange, i
     ep => ep.generatedVideoUrl || (ep.generatedVideos?.length ?? 0) > 0
   );
 
-  // 导出剪映草稿(开源版禁用:原版由服务端生成剪映草稿包,已随后端移除)
+  // 导出剪映草稿(禁用:后端由服务端生成剪映草稿包,已随后端移除)
   const handleExportToJianYing = async () => {
     void canExportToJianYing;
     void episodes;
-    message.warning('开源版不支持导出剪映草稿(需服务端支持),请逐段下载片段视频');
+    message.warning('不支持导出剪映草稿(需服务端支持),请逐段下载片段视频');
   };
 
   // 最近一次「片段衍生」新建片段的 id（tab 上方浮动「片段N衍生」角标）

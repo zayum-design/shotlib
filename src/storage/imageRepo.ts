@@ -13,15 +13,13 @@
 // limitations under the License.
 
 /**
- * imageRepo.ts — 图片资产仓储(blob 注册表 + objectURL 缓存)
+ * imageRepo.ts — 图片资产仓储(IndexedDB blob 注册表 + 可展示 URL 缓存)
  *
  * 本地化核心:生成的图片以 Blob 存 IndexedDB(`imageasset:{projectId}:{assetId}`),
- * 主数据(角色/场景/片段行)只引用 assetId;展示层通过 resolve 换取 objectURL。
+ * 主数据(角色/场景/片段行)只引用 assetId;展示层通过 resolve 换取可展示 URL。
  *
- * objectURL 生命周期:
- * - 内部 Map 缓存 assetId → objectURL,resolve 命中直接复用
- * - 项目切换时 revokeAll()(组件切换项目时调用)
- * - 单图重新生成/删除时 revoke 单个
+ * URL 解析结果(OSS 持久地址/稳定远程/data URL)均跨刷新有效,
+ * 缓存在内存 Map 中,无需回收;blob objectURL 机制已取消。
  */
 import { idbGet, idbSet, idbDel, idbKeys } from './db';
 import { stripBase64Fields } from './serialize';
@@ -36,8 +34,8 @@ export const LOCAL_URL_CACHE_KEY = '__local_url';
 /** image_asset.data 运行时缓存:assetId → data(生成状态等由调用方读取) */
 const imageDataCache = new Map<string, Record<string, any>>();
 
-/** objectURL 缓存:assetId → blob URL(跨项目共享,项目切换时统一 revoke) */
-const objectUrlCache = new Map<string, string>();
+/** 可展示 URL 缓存:assetId → OSS/稳定远程/data URL(跨刷新有效,无需回收) */
+const resolvedUrlCache = new Map<string, string>();
 
 /** 懒补传 OSS 的去重表:assetId → 补传 Promise(并发 resolve 不重复上传) */
 const ossHealing = new Map<string, Promise<string | null>>();
@@ -50,17 +48,18 @@ function recordKey(projectId: string, assetId: string): string {
   return `imageasset:${projectId}:${assetId}`;
 }
 
-export const imageRepo = {
-  // ---------- objectURL 管理 ----------
+/** 本地 Blob → data URL(blob objectURL 机制取消后的本地方案,FileReader 实现避免循环依赖) */
+function blobToDataUrlLocal(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('blob → dataURL 转换失败'));
+    reader.readAsDataURL(blob);
+  });
+}
 
-  /** 反查:objectURL(blob:) → assetId(发厂商前把本地引用还原为 OSS URL/data URL 用) */
-  findAssetIdByObjectUrl(url: string): string | undefined {
-    if (!url.startsWith('blob:')) return undefined;
-    for (const [assetId, cached] of objectUrlCache) {
-      if (cached === url) return assetId;
-    }
-    return undefined;
-  },
+export const imageRepo = {
+  // ---------- URL 解析 ----------
 
   /**
    * ensureUrl 的解析优先级(为记录解析可展示 URL):
@@ -92,11 +91,11 @@ export const imageRepo = {
     return !shortTermMarkers.some((m) => lower.includes(m));
   },
   async ensureUrl(assetId: string, record: ImageAssetRecord): Promise<string | undefined> {
-    const cached = objectUrlCache.get(assetId);
+    const cached = resolvedUrlCache.get(assetId);
     if (cached) return cached;
     const ossUrl = record.data?.ossUrl;
     if (typeof ossUrl === 'string' && /^https?:\/\//.test(ossUrl)) {
-      objectUrlCache.set(assetId, ossUrl);
+      resolvedUrlCache.set(assetId, ossUrl);
       return ossUrl;
     }
 
@@ -105,7 +104,7 @@ export const imageRepo = {
     if (record.blob) {
       const healed = await this.healToOss(assetId, record);
       if (healed) {
-        objectUrlCache.set(assetId, healed);
+        resolvedUrlCache.set(assetId, healed);
         return healed;
       }
     }
@@ -114,19 +113,19 @@ export const imageRepo = {
     const stableRemote = [record.remoteUrl, record.originalUrl, record.data?.original_url]
       .find((u) => this.isStableRemoteUrl(u));
     if (stableRemote) {
-      objectUrlCache.set(assetId, stableRemote);
+      resolvedUrlCache.set(assetId, stableRemote);
       return stableRemote;
     }
 
-    // 未配置 OSS / 补传失败:降级 blob objectURL(仅当前会话有效)
+    // 未配置 OSS / 补传失败:降级本地 Blob → data URL(跨刷新有效;blob objectURL 机制已取消)
     if (record.blob) {
-      const url = URL.createObjectURL(record.blob);
-      objectUrlCache.set(assetId, url);
+      const url = await blobToDataUrlLocal(record.blob);
+      resolvedUrlCache.set(assetId, url);
       return url;
     }
 
     const url = record.originalUrl || record.remoteUrl || record.data?.original_url || undefined;
-    if (url) objectUrlCache.set(assetId, url);
+    if (url) resolvedUrlCache.set(assetId, url);
     return url;
   },
 
@@ -166,29 +165,10 @@ export const imageRepo = {
         level: 'error',
         source: 'oss',
         error: e instanceof Error ? e.message : String(e),
-        message: `本地图片补传 OSS 失败,降级为会话内 blob 地址: ${(e as Error).message.slice(0, 150)}`,
+        message: `本地图片补传 OSS 失败,降级为 data URL: ${(e as Error).message.slice(0, 150)}`,
       });
       return null;
     });
-  },
-
-  /** 回收单个 assetId 的 objectURL(删除/重新生成后调用) */
-  revoke(assetId: string): void {
-    const url = objectUrlCache.get(assetId);
-    if (url && url.startsWith('blob:')) {
-      URL.revokeObjectURL(url);
-    }
-    objectUrlCache.delete(assetId);
-  },
-
-  /** 项目切换时回收全部 blob objectURL(防止长会话内存泄漏) */
-  revokeAll(): void {
-    for (const [id, url] of objectUrlCache) {
-      if (url.startsWith('blob:')) {
-        URL.revokeObjectURL(url);
-      }
-      objectUrlCache.delete(id);
-    }
   },
 
   // ---------- data 缓存(对齐原 localApi 行为) ----------
@@ -239,7 +219,7 @@ export const imageRepo = {
     extra?: Partial<Pick<ImageAssetRecord, 'assetType' | 'episodeNumber' | 'metadata' | 'data' | 'remoteUrl'>>,
   ): Promise<ApiResult<ImageAssetRecord>> {
     const existing = (await idbGet<ImageAssetRecord>(recordKey(projectId, assetId))) || null;
-    if (existing) imageRepo.revoke(assetId);
+    if (existing) resolvedUrlCache.delete(assetId);
     const record: ImageAssetRecord = {
       id: assetId,
       projectId,
@@ -263,7 +243,7 @@ export const imageRepo = {
   },
 
   async remove(projectId: string, assetId: string): Promise<void> {
-    imageRepo.revoke(assetId);
+    resolvedUrlCache.delete(assetId);
     imageDataCache.delete(assetId);
     await idbDel(recordKey(projectId, assetId));
   },
@@ -358,7 +338,7 @@ export const imageRepo = {
     const all = await idbKeys(prefix);
     for (const key of all) {
       const assetId = key.slice(prefix.length);
-      imageRepo.revoke(assetId);
+      resolvedUrlCache.delete(assetId);
       imageDataCache.delete(assetId);
       await idbDel(key);
     }

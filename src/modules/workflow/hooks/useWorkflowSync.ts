@@ -335,6 +335,27 @@ export function useWorkflowSync(projectId: string | undefined) {
     ) => {
       const state = useWorkflowStore.getState();
 
+      // 关键修复:store 里的角色/场景/道具可能尚未加载完成(页面打开后立即点下载,
+      // 后端覆盖加载还在进行),此时直接导出会得到空的 projectAssets。空则从本地
+      // 仓储按行读取(character/scene/prop 是项目级资产,episode_number=0)。
+      let stateCharacters = state.characters || [];
+      let stateScenes = state.scenes || [];
+      let stateProps = state.props || [];
+      if (stateCharacters.length === 0 && stateScenes.length === 0 && stateProps.length === 0 && projectId) {
+        try {
+          const assetsRes = await localApi.listProjectAssets(projectId, 'character,scene,prop', 0);
+          if (assetsRes.success && Array.isArray(assetsRes.data)) {
+            const rows = assetsRes.data as any[];
+            stateCharacters = rows.filter((r) => r.category === 'character').map((r) => r.data).filter(Boolean);
+            stateScenes = rows.filter((r) => r.category === 'scene').map((r) => r.data).filter(Boolean);
+            stateProps = rows.filter((r) => r.category === 'prop').map((r) => r.data).filter(Boolean);
+            console.log(`[buildCompleteProjectData] store 未加载,从仓储回读: chars=${stateCharacters.length}, scenes=${stateScenes.length}, props=${stateProps.length}`);
+          }
+        } catch (e) {
+          console.warn('[buildCompleteProjectData] 回读项目资产失败:', e);
+        }
+      }
+
       // 关键修复：按 id 去重 characters/scenes，防止 store 中有重复角色时导出重复数据
       const dedupeById = (items: any[]): any[] => {
         const seen = new Set<string>();
@@ -345,9 +366,9 @@ export function useWorkflowSync(projectId: string | undefined) {
           return true;
         });
       };
-      const uniqueCharacters = dedupeById(state.characters || []);
-      const uniqueScenes = dedupeById(state.scenes || []);
-      const uniqueProps = dedupeById(state.props || []);
+      const uniqueCharacters = dedupeById(stateCharacters);
+      const uniqueScenes = dedupeById(stateScenes);
+      const uniqueProps = dedupeById(stateProps);
 
       const projectAssets = {
         textModel: state.textModel,
@@ -591,8 +612,15 @@ export function useWorkflowSync(projectId: string | undefined) {
         const projectData = await buildCompleteProjectData(episodeList, currentEpisode, episodeIdMap);
         const workflowData = JSON.parse(JSON.stringify(projectData));
 
-        await exportWorkflowZipApi(projectId, workflowData);
-        message.success('打包文件下载已启动');
+        const result = await exportWorkflowZipApi(projectId, workflowData);
+        if (result.failed > 0) {
+          message.warning(
+            `打包完成:附件 ${result.downloaded + result.inlined}/${result.planned},` +
+              `${result.failed} 个下载失败(原因见 zip 内 attachments/index.json)`,
+          );
+        } else {
+          message.success(`打包文件下载已启动(附件 ${result.downloaded + result.inlined}/${result.planned})`);
+        }
       } catch (error) {
         console.error('下载打包文件失败:', error);
         message.error(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);

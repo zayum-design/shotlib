@@ -246,7 +246,14 @@ export type CameraMovement =
   | 'crane_down'   // 升降-降
   | 'rotate'       // 旋转
   | 'zoom'         // 变焦
-  | 'handheld';   // 手持晃动
+  | 'handheld'     // 手持晃动
+  | 'through_legs' // 双腿叉开（胯下穿过）
+  | 'over_waist'   // 过腰
+  | 'over_shoulder' // 过肩
+  | 'reverse_swoop' // 反向包抄（弧形绕行至另一侧）
+  | 'god_view'     // 上帝视角（垂直俯瞰）
+  | 'bay_orbit'    // 迈克尔贝环绕
+  | 'rack_focus';  // 虚实焦切换
 
 export const CAMERA_MOVEMENTS: { id: CameraMovement; name: string; description: string }[] = [
   { id: 'static', name: '固定', description: '镜头固定不动' },
@@ -263,6 +270,13 @@ export const CAMERA_MOVEMENTS: { id: CameraMovement; name: string; description: 
   { id: 'rotate', name: '旋转', description: '镜头旋转' },
   { id: 'zoom', name: '变焦', description: '镜头焦距变化' },
   { id: 'handheld', name: '手持晃动', description: '模拟手持拍摄' },
+  { id: 'through_legs', name: '双腿叉开', description: '低机位从叉开的双腿之间穿过拍摄，强烈透视与压迫感' },
+  { id: 'over_waist', name: '过腰', description: '越过一人腰部拍摄其对面主体，突出对话/对峙关系' },
+  { id: 'over_shoulder', name: '过肩', description: '越过肩部拍摄对话或对峙中的另一方，代入旁观视角' },
+  { id: 'reverse_swoop', name: '反向包抄', description: '镜头弧形绕行至主体另一侧，揭示其背后/对面的信息' },
+  { id: 'god_view', name: '上帝视角', description: '垂直正上方俯瞰，全知视角看清人物与全局的关系' },
+  { id: 'bay_orbit', name: '迈克尔贝环绕', description: '低机位广角高速环绕主体，用于动作/爆炸高潮的炫技镜头' },
+  { id: 'rack_focus', name: '虚实焦切换', description: '焦点在前后景主体间转移，完成信息揭示或关系转变' },
 ];
 
 // 镜头类型

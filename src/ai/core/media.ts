@@ -77,17 +77,13 @@ export function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 /**
- * 拉取远程/本地 URL 图片并转为 data URL
+ * 拉取远程图片并转为 data URL
  * - 已是 data URL 原样返回
- * - blob: URL 直接取 blob
  * - http(s): 直连优先,跨域失败自动经代理重试(fetchRemoteBlob)
  */
 export async function urlToDataUrl(url: string): Promise<string> {
   if (!url) return url;
   if (url.startsWith('data:')) return url;
-  if (url.startsWith('blob:')) {
-    return blobToDataUrl(await (await fetch(url)).blob());
-  }
   return blobToDataUrl(await fetchRemoteBlob(url));
 }
 

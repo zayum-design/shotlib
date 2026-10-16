@@ -46,11 +46,23 @@ async function ossSignV1(
   return btoa(binary);
 }
 
-/** 推断对象扩展名(Blob.type → jpeg/png/webp;未知用 png 兜底) */
+/** 推断对象扩展名(Blob.type → 扩展名;未知用 png 兜底) */
 function extFromMime(mime: string): string {
   if (mime.includes('jpeg')) return 'jpg';
+  if (mime.includes('png')) return 'png';
   if (mime.includes('webp')) return 'webp';
   if (mime.includes('gif')) return 'gif';
+  if (mime.includes('bmp')) return 'bmp';
+  // 视频/音频:按 MIME 映射真实扩展名,避免 mp4 等被兜底成 png 死链后缀
+  if (mime.includes('mp4')) return 'mp4';
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('quicktime')) return 'mov';
+  if (mime.includes('m4v')) return 'm4v';
+  if (mime.includes('mpeg')) return 'mp3';
+  if (mime.includes('wav')) return 'wav';
+  if (mime.includes('m4a') || mime.includes('audio/mp4')) return 'm4a';
+  if (mime.includes('aac')) return 'aac';
+  if (mime.includes('ogg')) return 'ogg';
   return 'png';
 }
 

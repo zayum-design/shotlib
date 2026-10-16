@@ -164,7 +164,7 @@ export function buildGenerateSceneViewRequestBody(
 }
 
 /**
- * 生成场景图片（支持多视角链式生成;开源版恒为同步调用,无 async/jobId 分支）
+ * 生成场景图片（支持多视角链式生成;恒为同步调用,无 async/jobId 分支）
  */
 export async function generateSceneImageApi(
   prompt: string,

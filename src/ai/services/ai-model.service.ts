@@ -111,7 +111,7 @@ export class AIModelService {
   }
 
   /**
-   * 深度思考流式生成剧本(开源版:浏览器直连 OpenAI 兼容流式端点):
+   * 深度思考流式生成剧本(浏览器直连 OpenAI 兼容流式端点):
    * - 提示词与非流式 generateScript 完全一致,附加深度思考自检引导
    * - 推理链增量(reasoning_content)与正文增量(content)逐事件下发
    * - 完成后提取 {script, summary},与非流式结果同构
@@ -179,7 +179,8 @@ export class AIModelService {
       '输出 JSON 前先在思考中逐项自检：1. 本幕所有【片段节拍N】是否全部覆盖、无遗漏无合并；',
       '2. 每个镜头提示词与剧本原文的场面调度/台词/情绪是否一致；',
       '3. 【角色:】【场景:】【形象照:】标记是否与清单名称逐字一致；',
-      '4. 分镜时长合计是否在片段时长上限内。思考中形成的问题清单与终稿结论一致后再输出。',
+      '4. 分镜时长合计是否在片段时长上限内；',
+      '5. 运镜编排：每个 shot 先按时间轴段落（建立/引入/发展/高潮/落点）定位再选运镜，static+push_in 是否超过该幕 shot 数一半、有无连续同运镜、特殊运镜（reverse_swoop/bay_orbit/god_view/through_legs/over_waist/over_shoulder/rack_focus）是否超每集限频，违反者在思考中调整后输出。',
     ].join('\n');
 
     let allEpisodes: any[] = [];
@@ -320,32 +321,55 @@ export class AIModelService {
     const decoder = new TextDecoder();
     let buffer = '';
     let content = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith('data:')) continue;
-        const payload = trimmed.slice(5).trim();
-        if (!payload || payload === '[DONE]') continue;
-        try {
-          const chunk = JSON.parse(payload) as {
-            choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
-          };
-          const delta = chunk.choices?.[0]?.delta;
-          if (!delta) continue;
-          if (delta.reasoning_content) handlers.onReasoning?.(delta.reasoning_content);
-          if (delta.content) {
-            content += delta.content;
-            handlers.onContent?.(delta.content);
+    // 数据帧看门狗:连接建立后若持续收不到任何 choices 数据帧(厂商只发 keep-alive
+    // 心跳或流式接口异常),不应干等到 600s fetch 超时才报模糊的 network error,
+    // 及时失败并给出可操作提示。仅 data 帧重置计时;推理模型首 token 可能很慢,取 180s。
+    const IDLE_NO_DATA_FRAME_MS = 180000;
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let rejectIdle: ((e: Error) => void) | undefined;
+    const idleWatchdog = new Promise<never>((_, reject) => {
+      rejectIdle = reject;
+    });
+    const armIdleWatchdog = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        rejectIdle?.(new Error(`流式响应异常：${IDLE_NO_DATA_FRAME_MS / 1000} 秒内未收到任何数据帧（厂商流式接口仅返回心跳），请重试或切换其他模型`));
+      }, IDLE_NO_DATA_FRAME_MS);
+    };
+    armIdleWatchdog();
+    try {
+      for (;;) {
+        const { done, value } = await Promise.race([reader.read(), idleWatchdog]);
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        let gotDataFrame = false;
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try {
+            const chunk = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string; reasoning_content?: string } }>;
+            };
+            const delta = chunk.choices?.[0]?.delta;
+            if (!delta) continue;
+            gotDataFrame = true;
+            if (delta.reasoning_content) handlers.onReasoning?.(delta.reasoning_content);
+            if (delta.content) {
+              content += delta.content;
+              handlers.onContent?.(delta.content);
+            }
+          } catch {
+            // 忽略格式异常的帧
           }
-        } catch {
-          // 忽略格式异常的帧
         }
+        if (gotDataFrame) armIdleWatchdog();
       }
+    } finally {
+      clearTimeout(idleTimer);
     }
     return content;
   }
@@ -624,6 +648,22 @@ export class AIModelService {
       characters?: Array<{ name: string; age?: string | number; gender?: string; description?: string }>;
     },
   ): Promise<{ report: string; characterSuggestions?: CharacterRevisionSuggestions }> {
+    const systemPrompt = this.buildScriptReviewSystemPrompt(modelId, options);
+    const report = await this.callTextModel(
+      modelId,
+      systemPrompt,
+      options.script,
+      '校验审阅剧本',
+    );
+    return { report, characterSuggestions: this.extractCharacterSuggestions(report) };
+  }
+
+  /** 校验审阅系统提示词：reviewScript 与流式 reviewScriptStream 共用 */
+  private buildScriptReviewSystemPrompt(modelId: string, options: {
+    summary?: string;
+    creationMode?: string;
+    characters?: Array<{ name: string; age?: string | number; gender?: string; description?: string }>;
+  }): string {
     const template = this.promptLoader.loadPromptTemplate(
       modelId,
       'drama/script-review',
@@ -652,13 +692,7 @@ export class AIModelService {
       characterList:
         characterList || '（未提供角色清单，角色清单覆盖检测项标记为不适用）',
     });
-    const report = await this.callTextModel(
-      modelId,
-      systemPrompt,
-      options.script,
-      '校验审阅剧本',
-    );
-    return { report, characterSuggestions: this.extractCharacterSuggestions(report) };
+    return systemPrompt;
   }
 
   /**
@@ -670,6 +704,20 @@ export class AIModelService {
     modelId: string,
     options: { script: string; summary?: string; audiences?: string[] },
   ): Promise<string> {
+    const systemPrompt = this.buildAudienceReviewSystemPrompt(modelId, options);
+    return this.callTextModel(
+      modelId,
+      systemPrompt,
+      options.script,
+      '观众审阅剧本',
+    );
+  }
+
+  /** 观众审阅系统提示词：audienceReviewScript 与流式 audienceReviewScriptStream 共用 */
+  private buildAudienceReviewSystemPrompt(
+    modelId: string,
+    options: { summary?: string; audiences?: string[] },
+  ): string {
     const template = this.promptLoader.loadPromptTemplate(
       modelId,
       'drama/script-audience-review',
@@ -684,12 +732,7 @@ export class AIModelService {
       audienceList:
         audienceList || '（未指定目标群体，请按泛大众短剧受众审阅）',
     });
-    return this.callTextModel(
-      modelId,
-      systemPrompt,
-      options.script,
-      '观众审阅剧本',
-    );
+    return systemPrompt;
   }
 
   /**
@@ -796,6 +839,20 @@ export class AIModelService {
     modelId: string,
     options: { script: string; summary?: string; requirement: string },
   ): Promise<string> {
+    const systemPrompt = this.buildScriptModifySystemPrompt(modelId, options);
+    return this.callTextModel(
+      modelId,
+      systemPrompt,
+      options.script,
+      '修改剧本',
+    );
+  }
+
+  /** 修改剧本系统提示词：modifyScript 与流式 modifyScriptStream 共用 */
+  private buildScriptModifySystemPrompt(
+    modelId: string,
+    options: { summary?: string; requirement: string },
+  ): string {
     const template = this.promptLoader.loadPromptTemplate(
       modelId,
       'drama/script-modify',
@@ -804,12 +861,125 @@ export class AIModelService {
       summary: options.summary || '（未提供故事梗概）',
       requirement: options.requirement,
     });
-    return this.callTextModel(
+    return systemPrompt;
+  }
+
+  // ============ 流式校验/审阅/修改剧本（深度思考） ============
+
+  /**
+   * 深度思考流式校验审阅（与 reviewScript 同构）：同一 script-review 模板 +
+   * 深度思考自检引导，推理链增量逐事件下发；报告解析（含角色清单修订建议）与非流式一致。
+   */
+  async reviewScriptStream(
+    modelId: string,
+    options: {
+      script: string;
+      summary?: string;
+      creationMode?: string;
+      characters?: Array<{ name: string; age?: string | number; gender?: string; description?: string }>;
+    },
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<{ report: string; characterSuggestions?: CharacterRevisionSuggestions }> {
+    const startTime = Date.now();
+    console.log(`[AIModelService] 流式深度思考校验审阅剧本 model=${modelId}`);
+    const systemPrompt = this.buildScriptReviewSystemPrompt(modelId, options);
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出审阅报告前先在思考中逐项自检：1. 各维度检查结论是否都有剧本原文依据，无依据的判定不得写入报告；',
+      '2. 若启用角色清单覆盖检测，逐角色核对出场与清单一致性；3. 问题清单与修改建议是否一一对应、可直接执行；',
+      '4. 审阅结论是否与故事梗概的定位一致。思考中形成的问题清单与终稿报告一致后再输出。',
+    ].join('\n');
+    const userText = `${options.script}${thinkingInstruction}`;
+    const report = await this.streamOpenAICompatible(
       modelId,
       systemPrompt,
-      options.script,
-      '修改剧本',
+      userText,
+      { temperature: 0.5, max_tokens: 12000 },
+      handlers,
     );
+    if (!report.trim()) {
+      throw new Error('模型返回内容为空（推理链可能耗尽输出预算），请重试或切换其他模型');
+    }
+    console.log(`[AIModelService] 流式校验审阅完成 model=${modelId}, 报告长度=${report.length}, 总耗时=${Date.now() - startTime}ms`);
+    return { report, characterSuggestions: this.extractCharacterSuggestions(report) };
+  }
+
+  /**
+   * 深度思考流式观众审阅（与 audienceReviewScript 同构）：同一 script-audience-review
+   * 模板 + 深度思考自检引导，推理链增量逐事件下发；返回 Markdown 审阅报告。
+   */
+  async audienceReviewScriptStream(
+    modelId: string,
+    options: { script: string; summary?: string; audiences?: string[] },
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<string> {
+    const startTime = Date.now();
+    console.log(`[AIModelService] 流式深度思考观众审阅剧本 model=${modelId}, 受众: ${(options.audiences || []).join('、')}`);
+    const systemPrompt = this.buildAudienceReviewSystemPrompt(modelId, options);
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出审阅报告前先在思考中逐项自检：1. 是否逐个目标受众分别代入视角独立审阅；',
+      '2. 追看意愿/情绪体验/弃剧风险/期待落差各维度的判断是否有剧本原文（具体场次/台词）依据；',
+      '3. 修改建议是否面向该受众可执行、与报告问题一一对应。思考中形成的问题清单与终稿报告一致后再输出。',
+    ].join('\n');
+    const userText = `${options.script}${thinkingInstruction}`;
+    const report = await this.streamOpenAICompatible(
+      modelId,
+      systemPrompt,
+      userText,
+      { temperature: 0.5, max_tokens: 12000 },
+      handlers,
+    );
+    if (!report.trim()) {
+      throw new Error('模型返回内容为空（推理链可能耗尽输出预算），请重试或切换其他模型');
+    }
+    console.log(`[AIModelService] 流式观众审阅完成 model=${modelId}, 报告长度=${report.length}, 总耗时=${Date.now() - startTime}ms`);
+    return report;
+  }
+
+  /**
+   * 深度思考流式修改剧本（与 modifyScript 同构）：同一 script-modify 模板 +
+   * 深度思考自检引导，推理链增量逐事件下发；返回修改后的完整剧本。
+   */
+  async modifyScriptStream(
+    modelId: string,
+    options: { script: string; summary?: string; requirement: string },
+    handlers: {
+      onReasoning?: (delta: string) => void;
+      onContent?: (delta: string) => void;
+    },
+  ): Promise<string> {
+    const startTime = Date.now();
+    console.log(`[AIModelService] 流式深度思考修改剧本 model=${modelId}, 要求: ${options.requirement.slice(0, 50)}`);
+    const systemPrompt = this.buildScriptModifySystemPrompt(modelId, options);
+    const thinkingInstruction = [
+      '',
+      '【深度思考与自检要求】',
+      '输出修改后的剧本前先在思考中逐项自检：1. 修改要求是否逐条落实、无遗漏无自行加码；',
+      '2. 未被要求修改的部分是否与原文逐段一致、未被误改；',
+      '3. 修改后是否仍满足剧本铁律（对白密度/结构格式/单集约束）并与故事梗概一致。思考中形成的落实清单与终稿一致后再输出剧本。',
+    ].join('\n');
+    const userText = `${options.script}${thinkingInstruction}`;
+    const newScript = await this.streamOpenAICompatible(
+      modelId,
+      systemPrompt,
+      userText,
+      { temperature: 0.5, max_tokens: 12000 },
+      handlers,
+    );
+    if (!newScript.trim()) {
+      throw new Error('模型返回内容为空（推理链可能耗尽输出预算），请重试或切换其他模型');
+    }
+    console.log(`[AIModelService] 流式修改剧本完成 model=${modelId}, 剧本长度=${newScript.length}, 总耗时=${Date.now() - startTime}ms`);
+    return newScript;
   }
 
   /**

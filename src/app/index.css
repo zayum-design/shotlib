@@ -1087,7 +1087,7 @@ audio {
   border-radius: 999px;
 }
 
-/* 隐藏滚动条（工具栏配置预览用，移植自原版 globals.css） */
+/* 隐藏滚动条（工具栏配置预览用） */
 .hide-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;

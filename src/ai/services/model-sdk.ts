@@ -28,7 +28,7 @@ import type {
 export class ModelSDKService {
   async process(request: UnifiedModelRequest): Promise<UnifiedModelResponse> {
     if (request.taskType !== 'text' && request.taskType !== 'image' && request.taskType !== 'video') {
-      // music/voice 生成依赖 Suno 等厂商服务端能力,开源版未移植
+      // music/voice 生成依赖 Suno 等厂商服务端能力,未移植
       return {
         success: false,
         data: { status: 'failed' as const },

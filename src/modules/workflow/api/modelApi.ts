@@ -15,7 +15,7 @@
 /**
  * 模型列表 API(纯前端版)
  *
- * 原版从服务端拉取模型列表;开源版改为读取内置 model.json 配置(model-registry)。
+ * 模型列表不依赖服务端,改为读取内置 model.json 配置(model-registry)。
  */
 import { getEnabledModelInfos } from '@/ai/core/model-registry';
 import { settingsRepo } from '@/storage/settingsRepo';
@@ -69,7 +69,7 @@ export interface ModelInfo {
 export interface GetModelsResponse {
   models: ModelInfo[];
   /**
-   * 场景图片画面比例(开源版不再由服务端下发,恒为 null,前端回退到项目比例)
+   * 场景图片画面比例(不再由服务端下发,恒为 null,前端回退到项目比例)
    */
   sceneImageAspectRatio?: string | null;
 }

@@ -16,7 +16,7 @@
  * db.ts — IndexedDB 底层封装(基于 idb-keyval)
  *
  * 纯前端项目唯一持久层。所有 key 使用 `shotlib:` 前缀统一命名空间,
- * 无用户隔离(开源版无登录体系)。
+ * 无用户隔离(无登录体系)。
  */
 import { createStore, get, set, del, keys } from 'idb-keyval';
 
